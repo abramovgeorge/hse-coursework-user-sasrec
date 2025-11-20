@@ -1,0 +1,12 @@
+defaults:
+  - batch_transforms: example
+  - _self_
+
+batch_transforms:
+  train: null
+  inference: null
+
+# these lines are required if you do not use instance transforms
+instance_transforms:
+  train: null
+  inference: null

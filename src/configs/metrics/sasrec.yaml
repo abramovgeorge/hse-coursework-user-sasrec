@@ -1,0 +1,5 @@
+train: {}
+inference:
+  - _target_: src.metrics.HitRateMetric
+    k: 10
+    name: "hitrate@10"

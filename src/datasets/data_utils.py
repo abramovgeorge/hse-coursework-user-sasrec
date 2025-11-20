@@ -1,8 +1,9 @@
+from functools import partial
 from itertools import repeat
 
 from hydra.utils import instantiate
 
-from src.datasets.collate import collate_fn
+from src.datasets.collate import sasrec_collate_fn
 from src.utils.init_utils import set_worker_seed
 
 
@@ -65,6 +66,13 @@ def get_dataloaders(config, device):
     # dataset partitions init
     datasets = instantiate(config.datasets)  # instance transforms are defined inside
 
+    data_kwargs = {
+        "n_items": datasets["train"].n_items,
+        "n_users": datasets["train"].n_users,
+        "pad_token": datasets["train"].n_items,
+    }
+    pad_token = data_kwargs["pad_token"]
+
     # dataloaders init
     dataloaders = {}
     for dataset_partition in config.datasets.keys():
@@ -74,6 +82,8 @@ def get_dataloaders(config, device):
             f"The batch size ({config.dataloader.batch_size}) cannot "
             f"be larger than the dataset length ({len(dataset)})"
         )
+
+        collate_fn = partial(sasrec_collate_fn, pad_token=pad_token)
 
         partition_dataloader = instantiate(
             config.dataloader,
@@ -85,4 +95,4 @@ def get_dataloaders(config, device):
         )
         dataloaders[dataset_partition] = partition_dataloader
 
-    return dataloaders, batch_transforms
+    return dataloaders, batch_transforms, data_kwargs

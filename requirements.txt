@@ -1,13 +1,14 @@
-torch==2.2.0
-torchvision==0.17.0
+torch
+torchvision
 torchmetrics
-numpy==1.26.4
+numpy
 tqdm
 matplotlib
 pandas
 wandb
 comet_ml
 hydra-core
+datasets==4.4.1
 
 black
 isort

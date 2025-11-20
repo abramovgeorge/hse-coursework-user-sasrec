@@ -35,14 +35,14 @@ def main(config):
 
     # setup data_loader instances
     # batch_transforms should be put on device
-    dataloaders, batch_transforms = get_dataloaders(config, device)
+    dataloaders, batch_transforms, data_kwargs = get_dataloaders(config, device)
 
     # build model architecture, then print to console
-    model = instantiate(config.model).to(device)
+    model = instantiate(config.model, **data_kwargs).to(device)
     logger.info(model)
 
     # get function handles of loss and metrics
-    loss_function = instantiate(config.loss_function).to(device)
+    loss_function = instantiate(config.loss_function, **data_kwargs).to(device)
     metrics = instantiate(config.metrics)
 
     # build optimizer, learning rate scheduler
