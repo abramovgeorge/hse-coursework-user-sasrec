@@ -43,7 +43,11 @@ def main(config):
 
     # get function handles of loss and metrics
     loss_function = instantiate(config.loss_function, **data_kwargs).to(device)
-    metrics = instantiate(config.metrics)
+    # we pass data_kwargs down to each metric (needed for coverage)
+    metrics = {
+        k: [instantiate(metric, **data_kwargs) for metric in v]
+        for k, v in config.metrics.items()
+    }
 
     # build optimizer, learning rate scheduler
     trainable_params = filter(lambda p: p.requires_grad, model.parameters())

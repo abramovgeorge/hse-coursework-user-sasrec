@@ -37,6 +37,12 @@ class MetricTracker:
         """
         # if self.writer is not None:
         #     self.writer.add_scalar(key, value)
+        # averaging for coverage is covered in the metric itself
+        if "coverage" in key:
+            self._data.loc[key, "total"] = value
+            self._data.loc[key, "counts"] += n
+            self._data.loc[key, "average"] = value
+            return
         self._data.loc[key, "total"] += value * n
         self._data.loc[key, "counts"] += n
         self._data.loc[key, "average"] = self._data.total[key] / self._data.counts[key]

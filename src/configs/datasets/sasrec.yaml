@@ -3,8 +3,10 @@ train:
   name: "train"
   inter_type: "listens"
   yambda_size: "50m"
-  min_inter: 1000
-  q: 0.9
+  min_inter_user: 1000
+  min_inter_item: 1000
+  min_len: 5
+  q: 0.95
   max_len: 100
   instance_transforms: ${transforms.instance_transforms.inference}
 test:
@@ -12,7 +14,9 @@ test:
   name: "test"
   inter_type: ${..train.inter_type}
   yambda_size: ${..train.yambda_size}
-  min_inter: ${..train.min_inter}
-  q: ${..train.q}
+  min_inter_user: ${..train.min_inter_user}
+  min_inter_item: ${..train.min_inter_item}
+  min_len: ${..train.min_len}
+  q: ${..train.q} # this is strictly required for preventing data leakage
   max_len: ${..train.max_len}
   instance_transforms: ${transforms.instance_transforms.inference}

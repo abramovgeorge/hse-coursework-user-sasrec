@@ -3,3 +3,9 @@ inference:
   - _target_: src.metrics.HitRateMetric
     k: 10
     name: "hitrate@10"
+  - _target_: src.metrics.NDCGMetric
+    k: 10
+    name: "ndcg@10"
+  - _target_: src.metrics.CoverageMetric
+    k: 10
+    name: "coverage@10"

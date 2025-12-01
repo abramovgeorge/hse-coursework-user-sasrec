@@ -22,8 +22,9 @@ class YambdaDataset(Dataset):
         yambda_size="50m",
         inactivity_thresh=1800,
         q=0.8,
-        min_inter=5,
-        min_len=5,
+        min_inter_user=None,
+        min_inter_item=None,
+        min_len=None,
         limit=None,
         max_len=100,
         shuffle_index=False,
@@ -37,7 +38,8 @@ class YambdaDataset(Dataset):
             inactivity_thresh (int): length of the inactivity window in seconds,
                 used for splitting the continuous dataset into sessions
             q (float): fraction of train data
-            min_inter (int | None): minimal number of interaction for an item or a user
+            min_inter_user (int | None): minimal number of interaction for a user
+            min_inter_item (int | None): minimal number of interaction for an item
             min_len (int | None): minimal length of a session
             limit (int | None): if not None, limit the total number of sessions
                 in the dataset to 'limit' elements.
@@ -57,15 +59,18 @@ class YambdaDataset(Dataset):
             df = df[df["played_ratio_pct"] >= 50]
         item_vcs = df["item_id"].value_counts()
         user_vcs = df["uid"].value_counts()
-        df = df[df["item_id"].isin(item_vcs[item_vcs > min_inter].index)]
-        df = df[df["uid"].isin(user_vcs[user_vcs > min_inter].index)]
+        if min_inter_item is not None:
+            df = df[df["item_id"].isin(item_vcs[item_vcs > min_inter_item].index)]
+        if min_inter_user is not None:
+            df = df[df["uid"].isin(user_vcs[user_vcs > min_inter_user].index)]
         df["uid"] = pd.Categorical(df["uid"]).codes
         df["item_id"] = pd.Categorical(df["item_id"]).codes
         self.n_users = df["uid"].max() + 1
         self.n_items = df["item_id"].max() + 1
         df = self._create_session_ids(df, inactivity_thresh)
-        session_sizes = df.groupby("session_id").size()
-        df = df[df["session_id"].isin(session_sizes[session_sizes > min_len].index)]
+        session_sizes = df["session_id"].value_counts()
+        if min_len is not None:
+            df = df[df["session_id"].isin(session_sizes[session_sizes > min_len].index)]
         train, test = self._train_test_split(df, q)
         if name == "train":
             self._df = train
@@ -108,8 +113,6 @@ class YambdaDataset(Dataset):
         Returns:
             pd.DataFrame: dataset with added global session ids
         """
-        # we divide inactivity_thresh by 5 since Yambda stores time in 5 second bins
-        inactivity_thresh = inactivity_thresh // 5
         df = df.copy()
         df["time_gap"] = df.groupby("uid")["timestamp"].diff()
         df["is_new_session"] = df["time_gap"] > inactivity_thresh
