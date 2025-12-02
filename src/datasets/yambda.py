@@ -56,6 +56,7 @@ class YambdaDataset(Dataset):
         )
         df = ds["train"].to_pandas()
         if "played_ratio_pct" in df.columns:
+            # we leave listens that lasted at least half of the track
             df = df[df["played_ratio_pct"] >= 50]
         item_vcs = df["item_id"].value_counts()
         user_vcs = df["uid"].value_counts()
@@ -73,7 +74,7 @@ class YambdaDataset(Dataset):
             df = df[df["session_id"].isin(session_sizes[session_sizes > min_len].index)]
         train, test = self._train_test_split(df, q)
         if name == "train":
-            self._df = train
+            self._df = train.copy()
             users = dict(zip(self._df["session_id"], self._df["uid"]))
             index = [
                 {"session_id": session_id, "user": users[session_id]}
@@ -84,7 +85,7 @@ class YambdaDataset(Dataset):
             test_items = test[~test.duplicated(subset="session_id", keep="last")]
             test_items = dict(zip(test_items["session_id"], test_items["item_id"]))
             test = test[test.duplicated(subset="session_id", keep="last")]
-            self._df = test
+            self._df = test.copy()
             users = dict(zip(self._df["session_id"], self._df["uid"]))
             index = [
                 {
@@ -101,6 +102,7 @@ class YambdaDataset(Dataset):
         )
         self._index = self._shuffle_and_limit_index(index, limit, shuffle_index)
         self.instance_transforms = instance_transforms
+        self.item_counts = dict(self._df["item_id"].value_counts())
 
     @staticmethod
     def _create_session_ids(df, inactivity_thresh=1800):

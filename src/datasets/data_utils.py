@@ -58,6 +58,8 @@ def get_dataloaders(config, device):
         batch_transforms (dict[Callable] | None): transforms that
             should be applied on the whole batch. Depend on the
             tensor name.
+        data_kwargs (dict): info about dataset needed for other parts of the framework
+            (e.g., model, metrics, etc.)
     """
     # transforms or augmentations init
     batch_transforms = instantiate(config.transforms.batch_transforms)
@@ -70,6 +72,7 @@ def get_dataloaders(config, device):
         "n_items": datasets["train"].n_items,
         "n_users": datasets["train"].n_users,
         "pad_token": datasets["train"].n_items,
+        "item_counts": datasets["test"].item_counts,
     }
     pad_token = data_kwargs["pad_token"]
 

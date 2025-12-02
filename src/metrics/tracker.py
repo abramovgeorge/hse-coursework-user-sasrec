@@ -32,12 +32,14 @@ class MetricTracker:
 
         Args:
             key (str): metric name.
-            value (float): metric value on the batch.
+            value (float | None): if not None, metric value on the batch.
             n (int): how many times to count this value.
         """
         # if self.writer is not None:
         #     self.writer.add_scalar(key, value)
         # averaging for coverage is covered in the metric itself
+        if value is None:
+            return
         if "coverage" in key:
             self._data.loc[key, "total"] = value
             self._data.loc[key, "counts"] += n

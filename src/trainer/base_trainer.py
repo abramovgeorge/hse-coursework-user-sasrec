@@ -264,8 +264,7 @@ class BaseTrainer:
         self.model.eval()
         for metric in self.metrics["inference"]:
             # resetting eval metrics that need resetting (e.g., coverage)
-            if hasattr(metric, "reset") and callable(getattr(metric, "reset")):
-                metric.reset()
+            metric.reset()
         self.evaluation_metrics.reset()
         with torch.no_grad():
             for batch_idx, batch in tqdm(

@@ -9,3 +9,18 @@ inference:
   - _target_: src.metrics.CoverageMetric
     k: 10
     name: "coverage@10"
+  - _target_: src.metrics.NDCGMetric
+    k: 10
+    name: "ndcg@10" # names are changed for bins inside the class
+    num_bins: 3
+    bin_idx: 0
+  - _target_: src.metrics.NDCGMetric
+    k: 10
+    name: "ndcg@10"
+    num_bins: 3
+    bin_idx: 1
+  - _target_: src.metrics.NDCGMetric
+    k: 10
+    name: "ndcg@10"
+    num_bins: 3
+    bin_idx: 2

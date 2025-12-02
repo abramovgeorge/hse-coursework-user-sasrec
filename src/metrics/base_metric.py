@@ -20,3 +20,9 @@ class BaseMetric:
         Can use external functions (like TorchMetrics) or custom ones.
         """
         raise NotImplementedError()
+
+    def reset(self):
+        """
+        Resets metric function (e.g., if it has some running stats for an epoch)
+        """
+        pass
