@@ -9,6 +9,7 @@ wandb
 comet_ml
 hydra-core
 datasets==4.4.1
+opt_einsum
 
 black
 isort

@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+from opt_einsum import contract
 from torch import nn
 
 from src.model.sasrec import PointWiseFeedForward
@@ -21,6 +22,7 @@ class UserSASRec(nn.Module):
         n_items,
         n_users,
         user_handling,
+        user_dim=None,
         **data_kwargs,
     ):
         """
@@ -34,6 +36,8 @@ class UserSASRec(nn.Module):
             n_items (int): number of items in the dataset.
             n_users (int): number of users in the dataset.
             user_handling (str): specifies user embedding handling.
+            user_dim (int | None): if not None, hidden dimension for the user embeddings,
+                different from `hidden_dim`. It is used in Tucker decomposition.
         """
         super().__init__()
 
@@ -46,13 +50,22 @@ class UserSASRec(nn.Module):
         self._n_items = n_items
         self._n_users = n_users
         self._user_handling = user_handling
+        self._user_dim = hidden_dim if user_dim is None else user_dim
 
         self.item_emb = nn.Embedding(
             self._n_items + 1, self._hidden_dim, padding_idx=self._pad_token
         )
         self.pos_emb = nn.Embedding(self._max_len, self._hidden_dim)
-        self.user_emb = nn.Embedding(self._n_users, self._hidden_dim)
+        self.user_emb = nn.Embedding(self._n_users, self._user_dim)
         self.emb_dropout = nn.Dropout(self._p)
+
+        if user_handling == "mult":
+            self.user_linear = nn.Linear(self._hidden_dim, self._hidden_dim)
+
+        if user_handling == "tucker":
+            self.core = nn.Parameter(
+                torch.rand(self._user_dim, self._hidden_dim, self._hidden_dim)
+            )  # reinitialized in self._initialize
 
         self.attention_layernorms = nn.ModuleList()  # to be Q for self-attention
         self.attention_layers = nn.ModuleList()
@@ -125,13 +138,26 @@ class UserSASRec(nn.Module):
 
         if self._user_handling == "add":
             hidden_states += user_emb.unsqueeze(1)
+            logits = hidden_states @ self.item_emb.weight.T  # (B, L, n_item)
         elif self._user_handling == "mult":
-            hidden_states *= user_emb.unsqueeze(1)
-            hidden_states = self.emb_dropout(hidden_states)
+            user_emb = user_emb.unsqueeze(1).expand(-1, hidden_states.shape[1], -1)
+            user_emb = self.emb_dropout(user_emb)
+            user_emb = self.user_linear(user_emb)
+            hidden_states *= user_emb
+            logits = hidden_states @ self.item_emb.weight.T  # (B, L, n_item)
+        elif self._user_handling == "tucker":
+            user_emb = self.emb_dropout(user_emb)
+            # we use opt_einsum to avoid forming B x L x N_items x D_u x D x D tensor
+            logits = contract(
+                "bi, blj, nk, ijk -> bln",
+                user_emb,  # (B, D_u)
+                hidden_states,  # (B, L, D)
+                self.item_emb.weight,  # (N_items, D)
+                self.core,  # (D_u, D, D)
+                backend="torch",
+            )
         else:
             raise NotImplementedError
-
-        logits = hidden_states @ self.item_emb.weight.T  # (B, L, n_item)
 
         return {"logits": logits}
 
