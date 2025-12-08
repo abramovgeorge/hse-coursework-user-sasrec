@@ -4,5 +4,4 @@ num_blocks: 2
 max_len: ${datasets.train.max_len}
 num_heads: 1
 dropout_rate: 0.5
-user_handling: "tucker"
-user_dim: 100
+user_handling: "mult"

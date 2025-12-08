@@ -38,7 +38,9 @@ def main(config):
     dataloaders, batch_transforms, data_kwargs = get_dataloaders(config, device)
 
     # build model architecture, then print to console
-    model = instantiate(config.model, **data_kwargs).to(device)
+    model = instantiate(
+        config.model, loss_class=config.loss_function._target_, **data_kwargs
+    ).to(device)
     logger.info(model)
 
     # get function handles of loss and metrics

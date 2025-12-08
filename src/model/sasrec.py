@@ -1,5 +1,8 @@
+from functools import partial
+
 import numpy as np
 import torch
+import torch.nn.functional as F
 from torch import nn
 
 
@@ -37,6 +40,7 @@ class SASRec(nn.Module):
         num_heads,
         dropout_rate,
         n_items,
+        loss_class,
         **data_kwargs,
     ):
         """
@@ -48,6 +52,7 @@ class SASRec(nn.Module):
             num_heads (int): number of head for multi-head attention.
             dropout_rate (float): dropout rate for dropout layers.
             n_items (int): number of items in the dataset.
+            loss_class (str): loss function class.
         """
         super().__init__()
 
@@ -58,6 +63,11 @@ class SASRec(nn.Module):
         self._num_heads = num_heads
         self._p = dropout_rate
         self._n_items = n_items
+        loss_class_map = {
+            "src.loss.SASRecCELoss": "ce",
+            "src.loss.SASRecSCELoss": "sce",
+        }
+        self._loss_type = loss_class_map[loss_class]
 
         self.item_emb = nn.Embedding(
             self._n_items + 1, self._hidden_dim, padding_idx=self._pad_token
@@ -94,12 +104,12 @@ class SASRec(nn.Module):
             except:  # noqa: E722
                 pass  # just ignore those failed init layers
 
-    def forward(self, seq, **batch):
+    def _get_hidden_states(self, seq, **batch):
         """
         Args:
             seq (torch.tensor): tensor of shape (B, L) containing input sequences
         Returns:
-            output (dict): output dict containing hidden states after last layer.
+            hidden_states (torch.tensor): last hidden states tensor.
         """
         device = seq.device
         seqs = self.item_emb(seq)
@@ -129,6 +139,129 @@ class SASRec(nn.Module):
             seqs *= ~timeline_mask.unsqueeze(-1)
 
         hidden_states = self.last_layernorm(seqs)  # (B, L, D)
+        return hidden_states
+
+    def _forward_sce(
+        self, seq, target, n_buckets, bucket_size_x, bucket_size_y, mix_x, **batch
+    ):
+        """
+        This function calculates Scalable cross-entropy loss
+            from https://arxiv.org/abs/2409.18721
+
+        Args:
+            seq (torch.tensor): tensor containing input sequences. Shape: (B, L)
+            target (torch.tensor): tensor containing next items
+                (i.e., targets) for next-item prediction. Shape: (B, L - 1)
+            n_buckets (int): number of buckets
+            bucket_size_x (int): bucket size for inputs
+            bucket_size_y (int): bucket size for targets
+            mix_x (bool): if True, mix hidden states with random matrix
+        Returns:
+            output (dict): output dict containing SCE loss.
+        """
+
+        seq = seq[:, :-1]
+        hidden_states = self._get_hidden_states(seq)
+
+        hd = hidden_states.shape[-1]
+
+        x = hidden_states.reshape(-1, hd)
+        y = target.reshape(-1)
+        w = self.item_emb.weight
+
+        correct_class_logits_ = (x * torch.index_select(w, dim=0, index=y)).sum(
+            dim=1
+        )  # (bs,)
+
+        with torch.no_grad():
+            if mix_x:
+                omega = (
+                    1
+                    / np.sqrt(np.sqrt(hd))
+                    * torch.randn(x.shape[0], n_buckets, device=x.device)
+                )
+                buckets = omega.T @ x
+                del omega
+            else:
+                buckets = (
+                    1
+                    / np.sqrt(np.sqrt(hd))
+                    * torch.randn(n_buckets, hd, device=x.device)
+                )  # (n_b, hd)
+
+        with torch.no_grad():
+            x_bucket = buckets @ x.T  # (n_b, hd) x (hd, b) -> (n_b, b)
+            x_bucket[:, seq.reshape(-1) == self.pad_token] = float("-inf")
+            _, top_x_bucket = torch.topk(
+                x_bucket, dim=1, k=bucket_size_x
+            )  # (n_b, bs_x)
+            del x_bucket
+
+            y_bucket = buckets @ w.T  # (n_b, hd) x (hd, n_cl) -> (n_b, n_cl)
+
+            y_bucket[:, self.pad_token] = float("-inf")
+            _, top_y_bucket = torch.topk(
+                y_bucket, dim=1, k=bucket_size_y
+            )  # (n_b, bs_y)
+            del y_bucket
+
+        x_bucket = torch.gather(x, 0, top_x_bucket.view(-1, 1).expand(-1, hd)).view(
+            n_buckets, bucket_size_x, hd
+        )  # (n_b, bs_x, hd)
+        y_bucket = torch.gather(w, 0, top_y_bucket.view(-1, 1).expand(-1, hd)).view(
+            n_buckets, bucket_size_y, hd
+        )  # (n_b, bs_y, hd)
+
+        wrong_class_logits = x_bucket @ y_bucket.transpose(-1, -2)  # (n_b, bs_x, bs_y)
+        mask = (
+            torch.index_select(y, dim=0, index=top_x_bucket.view(-1)).view(
+                n_buckets, bucket_size_x
+            )[:, :, None]
+            == top_y_bucket[:, None, :]
+        )  # (n_b, bs_x, bs_y)
+        wrong_class_logits = wrong_class_logits.masked_fill(
+            mask, float("-inf")
+        )  # (n_b, bs_x, bs_y)
+        correct_class_logits = torch.index_select(
+            correct_class_logits_, dim=0, index=top_x_bucket.view(-1)
+        ).view(n_buckets, bucket_size_x)[
+            :, :, None
+        ]  # (n_b, bs_x, 1)
+        logits = torch.cat(
+            (wrong_class_logits, correct_class_logits), dim=2
+        )  # (n_b, bs_x, bs_y + 1)
+
+        loss_ = F.cross_entropy(
+            logits.view(-1, logits.shape[-1]),
+            (logits.shape[-1] - 1)
+            * torch.ones(
+                logits.shape[0] * logits.shape[1],
+                dtype=torch.int64,
+                device=logits.device,
+            ),
+            reduction="none",
+        )  # (n_b * bs_x,)
+        loss = torch.zeros(x.shape[0], device=x.device, dtype=x.dtype)
+        loss.scatter_reduce_(
+            0, top_x_bucket.view(-1), loss_, reduce="amax", include_self=False
+        )
+        loss = loss[(loss != 0) & (y != self.pad_token)]
+        loss = torch.mean(loss)
+
+        return {"sce_loss": loss}
+
+    def forward(self, seq, **batch):
+        """
+        Args:
+            seq (torch.tensor): tensor of shape (B, L) containing input sequences
+        Returns:
+            output (dict): output dict containing appropriate forward output for CE type.
+        """
+
+        if self._loss_type == "sce":
+            return {"sce_loss_fn": partial(self._forward_sce, seq=seq)}
+
+        hidden_states = self._get_hidden_states(seq)
 
         logits = hidden_states @ self.item_emb.weight.T  # (B, L, n_item)
 

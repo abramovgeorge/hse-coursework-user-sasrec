@@ -1,5 +1,8 @@
+from functools import partial
+
 import numpy as np
 import torch
+import torch.nn.functional as F
 from opt_einsum import contract
 from torch import nn
 
@@ -22,6 +25,7 @@ class UserSASRec(nn.Module):
         n_items,
         n_users,
         user_handling,
+        loss_class,
         user_dim=None,
         **data_kwargs,
     ):
@@ -36,6 +40,7 @@ class UserSASRec(nn.Module):
             n_items (int): number of items in the dataset.
             n_users (int): number of users in the dataset.
             user_handling (str): specifies user embedding handling.
+            loss_class (str): loss function class.
             user_dim (int | None): if not None, hidden dimension for the user embeddings,
                 different from `hidden_dim`. It is used in Tucker decomposition.
         """
@@ -50,6 +55,11 @@ class UserSASRec(nn.Module):
         self._n_items = n_items
         self._n_users = n_users
         self._user_handling = user_handling
+        loss_class_map = {
+            "src.loss.SASRecCELoss": "ce",
+            "src.loss.SASRecSCELoss": "sce",
+        }
+        self._loss_type = loss_class_map[loss_class]
         self._user_dim = hidden_dim if user_dim is None else user_dim
 
         self.item_emb = nn.Embedding(
@@ -60,12 +70,16 @@ class UserSASRec(nn.Module):
         self.emb_dropout = nn.Dropout(self._p)
 
         if user_handling == "mult":
-            self.user_linear = nn.Linear(self._hidden_dim, self._hidden_dim)
+            self.user_linear = nn.Linear(self._user_dim, self._hidden_dim)
 
         if user_handling == "tucker":
             self.core = nn.Parameter(
                 torch.rand(self._user_dim, self._hidden_dim, self._hidden_dim)
             )  # reinitialized in self._initialize
+
+        if user_handling == "gru":
+            self.hidden_to_gate = nn.Linear(self._hidden_dim, self._user_dim)
+            self.user_to_gate = nn.Linear(self._user_dim, self._user_dim)
 
         self.attention_layernorms = nn.ModuleList()  # to be Q for self-attention
         self.attention_layers = nn.ModuleList()
@@ -96,14 +110,14 @@ class UserSASRec(nn.Module):
             except:  # noqa: E722
                 pass  # just ignore those failed init layers
 
-    def forward(self, seq, user, **batch):
+    def _get_hidden_states(self, seq, user):
         """
         Args:
             seq (torch.tensor): tensor containing input sequences. Shape: (B, L)
             user (torch.tensor): tensor containing users
                 for corresponding sequences. Shape: (B)
         Returns:
-            output (dict): output dict containing hidden states after last layer.
+            hidden_states (torch.tensor): last hidden states tensor.
         """
         device = seq.device
         seqs = self.item_emb(seq)
@@ -138,14 +152,157 @@ class UserSASRec(nn.Module):
 
         if self._user_handling == "add":
             hidden_states += user_emb.unsqueeze(1)
-            logits = hidden_states @ self.item_emb.weight.T  # (B, L, n_item)
         elif self._user_handling == "mult":
             user_emb = user_emb.unsqueeze(1).expand(-1, hidden_states.shape[1], -1)
             user_emb = self.emb_dropout(user_emb)
             user_emb = self.user_linear(user_emb)
-            hidden_states *= user_emb
-            logits = hidden_states @ self.item_emb.weight.T  # (B, L, n_item)
+            hidden_states *= user_emb**2
         elif self._user_handling == "tucker":
+            # for tucker, we use user embeddings in forward
+            pass
+        elif self._user_handling == "gru":
+            user_emb = user_emb.unsqueeze(1).expand(-1, hidden_states.shape[1], -1)
+            gate = self.user_to_gate(user_emb) + self.hidden_to_gate(hidden_states)
+            gate = F.sigmoid(gate)
+            hidden_states = hidden_states * user_emb * gate
+        else:
+            raise NotImplementedError
+
+        return hidden_states
+
+    def _forward_sce(
+        self, seq, user, target, n_buckets, bucket_size_x, bucket_size_y, mix_x, **batch
+    ):
+        """
+        This function calculates Scalable cross-entropy loss
+            from https://arxiv.org/abs/2409.18721
+
+        Args:
+            seq (torch.tensor): tensor containing input sequences. Shape: (B, L)
+            user (torch.tensor): tensor containing users
+                for corresponding sequences. Shape: (B)
+            target (torch.tensor): tensor containing next items
+                (i.e., targets) for next-item prediction. Shape: (B, L - 1)
+            n_buckets (int): number of buckets
+            bucket_size_x (int): bucket size for inputs
+            bucket_size_y (int): bucket size for targets
+            mix_x (bool): if True, mix hidden states with random matrix
+        Returns:
+            output (dict): output dict containing SCE loss.
+        """
+
+        if self._user_handling == "tucker":
+            raise NotImplementedError(
+                "Tucker decomposition is implemented only for full CE"
+            )
+
+        seq = seq[:, :-1]
+        hidden_states = self._get_hidden_states(seq, user)
+
+        hd = hidden_states.shape[-1]
+
+        x = hidden_states.reshape(-1, hd)
+        y = target.reshape(-1)
+        w = self.item_emb.weight
+
+        correct_class_logits_ = (x * torch.index_select(w, dim=0, index=y)).sum(
+            dim=1
+        )  # (bs,)
+
+        with torch.no_grad():
+            if mix_x:
+                omega = (
+                    1
+                    / np.sqrt(np.sqrt(hd))
+                    * torch.randn(x.shape[0], n_buckets, device=x.device)
+                )
+                buckets = omega.T @ x
+                del omega
+            else:
+                buckets = (
+                    1
+                    / np.sqrt(np.sqrt(hd))
+                    * torch.randn(n_buckets, hd, device=x.device)
+                )  # (n_b, hd)
+
+        with torch.no_grad():
+            x_bucket = buckets @ x.T  # (n_b, hd) x (hd, b) -> (n_b, b)
+            x_bucket[:, seq.reshape(-1) == self._pad_token] = float("-inf")
+            _, top_x_bucket = torch.topk(
+                x_bucket, dim=1, k=bucket_size_x
+            )  # (n_b, bs_x)
+            del x_bucket
+
+            y_bucket = buckets @ w.T  # (n_b, hd) x (hd, n_cl) -> (n_b, n_cl)
+
+            y_bucket[:, self._pad_token] = float("-inf")
+            _, top_y_bucket = torch.topk(
+                y_bucket, dim=1, k=bucket_size_y
+            )  # (n_b, bs_y)
+            del y_bucket
+
+        x_bucket = torch.gather(x, 0, top_x_bucket.view(-1, 1).expand(-1, hd)).view(
+            n_buckets, bucket_size_x, hd
+        )  # (n_b, bs_x, hd)
+        y_bucket = torch.gather(w, 0, top_y_bucket.view(-1, 1).expand(-1, hd)).view(
+            n_buckets, bucket_size_y, hd
+        )  # (n_b, bs_y, hd)
+
+        wrong_class_logits = x_bucket @ y_bucket.transpose(-1, -2)  # (n_b, bs_x, bs_y)
+        mask = (
+            torch.index_select(y, dim=0, index=top_x_bucket.view(-1)).view(
+                n_buckets, bucket_size_x
+            )[:, :, None]
+            == top_y_bucket[:, None, :]
+        )  # (n_b, bs_x, bs_y)
+        wrong_class_logits = wrong_class_logits.masked_fill(
+            mask, float("-inf")
+        )  # (n_b, bs_x, bs_y)
+        correct_class_logits = torch.index_select(
+            correct_class_logits_, dim=0, index=top_x_bucket.view(-1)
+        ).view(n_buckets, bucket_size_x)[
+            :, :, None
+        ]  # (n_b, bs_x, 1)
+        logits = torch.cat(
+            (wrong_class_logits, correct_class_logits), dim=2
+        )  # (n_b, bs_x, bs_y + 1)
+
+        loss_ = F.cross_entropy(
+            logits.view(-1, logits.shape[-1]),
+            (logits.shape[-1] - 1)
+            * torch.ones(
+                logits.shape[0] * logits.shape[1],
+                dtype=torch.int64,
+                device=logits.device,
+            ),
+            reduction="none",
+        )  # (n_b * bs_x,)
+        loss = torch.zeros(x.shape[0], device=x.device, dtype=x.dtype)
+        loss.scatter_reduce_(
+            0, top_x_bucket.view(-1), loss_, reduce="amax", include_self=False
+        )
+        loss = loss[(loss != 0) & (y != self._pad_token)]
+        loss = torch.mean(loss)
+
+        return loss
+
+    def forward(self, seq, user, **batch):
+        """
+        Args:
+            seq (torch.tensor): tensor containing input sequences. Shape: (B, L)
+            user (torch.tensor): tensor containing users
+                for corresponding sequences. Shape: (B)
+        Returns:
+            output (dict): output dict containing appropriate forward output for CE type.
+        """
+
+        if self._loss_type == "sce":
+            return {"sce_loss_fn": partial(self._forward_sce, seq=seq, user=user)}
+
+        hidden_states = self._get_hidden_states(seq, user)
+
+        if self._user_handling == "tucker":
+            user_emb = self.user_emb(user)
             user_emb = self.emb_dropout(user_emb)
             # we use opt_einsum to avoid forming B x L x N_items x D_u x D x D tensor
             logits = contract(
@@ -157,7 +314,7 @@ class UserSASRec(nn.Module):
                 backend="torch",
             )
         else:
-            raise NotImplementedError
+            logits = hidden_states @ self.item_emb.weight.T  # (B, L, n_item)
 
         return {"logits": logits}
 
