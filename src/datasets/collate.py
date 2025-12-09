@@ -16,11 +16,13 @@ def sasrec_collate_fn(dataset_items: list[dict], pad_token: int):
         result_batch (dict[Tensor]): dict, containing batch-version
             of the tensors.
     """
-    seqs = [elem["seq"] for elem in dataset_items]
+    seqs = [elem["seq"].flip(0) for elem in dataset_items]
     users = [elem["user"] for elem in dataset_items]
     items = [elem.get("item", None) for elem in dataset_items]
 
     seqs = pad_sequence(seqs, batch_first=True, padding_value=pad_token)
+    seqs = seqs.flip(1)
+
     attention_mask = (seqs != pad_token).to(torch.long)
 
     result_batch = {

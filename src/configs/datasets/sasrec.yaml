@@ -7,7 +7,7 @@ train:
   min_inter_item: 1000
   min_len: 5
   q: 0.95
-  max_len: 100
+  max_len: 200
   instance_transforms: ${transforms.instance_transforms.inference}
 test:
   _target_: src.datasets.YambdaDataset

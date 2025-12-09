@@ -65,6 +65,7 @@ class SASRec(nn.Module):
         self._n_items = n_items
         loss_class_map = {
             "src.loss.SASRecCELoss": "ce",
+            "src.loss.SASRecBCELoss": "bce",
             "src.loss.SASRecSCELoss": "sce",
         }
         self._loss_type = loss_class_map[loss_class]
@@ -141,8 +142,45 @@ class SASRec(nn.Module):
         hidden_states = self.last_layernorm(seqs)  # (B, L, D)
         return hidden_states
 
+    def _forward_bce(self, hidden_states, pos_items, neg_items, **batch):
+        """
+        This function calculates binary cross-entropy loss with negative sampling
+
+        Args:
+            hidden_states (torch.tensor): tensor containing precomputed
+                hidden_states. Shape: (B, L, D)
+            pos_items (torch.tensor): tensor containing next items
+                (i.e., targets) for next-item prediction. Shape: (B, L - 1)
+            neg_items (torch.tensor): tensor containing N wrong items
+                for each position for next-item prediction. Shape: (B, L - 1, N)
+        Returns:
+            output (dict): output dict containing logits for pos_items and neg_items.
+        """
+
+        hidden_states = hidden_states[:, :-1, :]  # (B, L - 1, D)
+
+        pos_embs = self.item_emb(pos_items)  # (B, L - 1, D)
+        neg_emds = self.item_emb(neg_items)  # (B, L - 1, N, D)
+
+        pos_logits = torch.einsum(
+            "bld, bld -> bl", hidden_states, pos_embs
+        )  # (B, L - 1)
+        neg_logits = torch.einsum(
+            "bld, blnd -> bln", hidden_states, neg_emds
+        )  # (B, L - 1, N)
+
+        return {"pos_logits": pos_logits, "neg_logits": neg_logits}
+
     def _forward_sce(
-        self, seq, target, n_buckets, bucket_size_x, bucket_size_y, mix_x, **batch
+        self,
+        seq,
+        hidden_states,
+        target,
+        n_buckets,
+        bucket_size_x,
+        bucket_size_y,
+        mix_x,
+        **batch,
     ):
         """
         This function calculates Scalable cross-entropy loss
@@ -150,6 +188,8 @@ class SASRec(nn.Module):
 
         Args:
             seq (torch.tensor): tensor containing input sequences. Shape: (B, L)
+            hidden_states (torch.tensor): tensor containing precomputed
+                hidden_states. Shape: (B, L, D)
             target (torch.tensor): tensor containing next items
                 (i.e., targets) for next-item prediction. Shape: (B, L - 1)
             n_buckets (int): number of buckets
@@ -161,7 +201,7 @@ class SASRec(nn.Module):
         """
 
         seq = seq[:, :-1]
-        hidden_states = self._get_hidden_states(seq)
+        hidden_states = hidden_states[:, :-1, :]
 
         hd = hidden_states.shape[-1]
 
@@ -250,6 +290,24 @@ class SASRec(nn.Module):
 
         return {"sce_loss": loss}
 
+    def _get_last_logits(self, hidden_states, attention_mask, **batch):
+        """
+        Get last logits for metric calculation
+        Args:
+            hidden_states (torch.tensor): tensor containing precomputed
+                hidden_states. Shape: (B, L, D)
+            attention_mask (torch.tensor): attention mask indicating non-pad tokens. Shape (B, L)
+        Returns:
+            output (dict): output dict containing last logit tensor of shape (B, N_items)
+        """
+        last_indices = attention_mask.sum(dim=1) - 1
+        batch_indices = torch.arange(
+            hidden_states.shape[0], device=hidden_states.device
+        )
+        last_states = hidden_states[batch_indices, last_indices, :]  # (B, D)
+        last_logits = last_states @ self.item_emb.weight.T  # (B, N_items)
+        return last_logits
+
     def forward(self, seq, **batch):
         """
         Args:
@@ -258,14 +316,27 @@ class SASRec(nn.Module):
             output (dict): output dict containing appropriate forward output for CE type.
         """
 
-        if self._loss_type == "sce":
-            return {"sce_loss_fn": partial(self._forward_sce, seq=seq)}
-
         hidden_states = self._get_hidden_states(seq)
 
-        logits = hidden_states @ self.item_emb.weight.T  # (B, L, n_item)
+        output = dict()
+        output["last_logits"] = self._get_last_logits(hidden_states, **batch)
 
-        return {"logits": logits}
+        if self._loss_type == "sce":
+            output["sce_loss_fn"] = partial(
+                self._forward_sce, hidden_states=hidden_states, seq=seq
+            )
+            return output
+        elif self._loss_type == "bce":
+            output["loss_fn"] = partial(
+                self._forward_bce,
+                hidden_states=hidden_states,
+            )
+            return output
+
+        logits = hidden_states @ self.item_emb.weight.T  # (B, L, n_item)
+        output["logits"] = logits
+
+        return output
 
     def __str__(self):
         """

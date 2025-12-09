@@ -44,25 +44,20 @@ class HitRateMetric(BaseMetric):
 
     def __call__(
         self,
-        logits: torch.Tensor,
+        last_logits: torch.Tensor,
         item: torch.Tensor,
-        attention_mask: torch.Tensor,
         **kwargs,
     ):
         """
         Metric calculation logic.
 
         Args:
-            logits (Tensor): model output predictions. Shape (B, L, N_items)
+            last_logits (Tensor): model output predictions for next item. Shape (B, N_items)
             item (Tensor): ground-truth labels. Shape (B)
-            attention_mask (Tensor): attention mask indicating non-pad tokens. Shape (B, L)
         Returns:
             metric (float | None): calculated metric.
                 If no items from batch appear in bins, returns None
         """
-        last_indices = attention_mask.sum(dim=1) - 1
-        batch_indices = torch.arange(logits.shape[0], device=logits.device)
-        last_logits = logits[batch_indices, last_indices, :]
         _, top_items = torch.topk(last_logits, k=self._k, dim=1)
         hit = top_items == item.reshape(-1, 1)
         if self._bin_mask is not None:
@@ -92,25 +87,20 @@ class NDCGMetric(HitRateMetric):
 
     def __call__(
         self,
-        logits: torch.Tensor,
+        last_logits: torch.Tensor,
         item: torch.Tensor,
-        attention_mask: torch.Tensor,
         **kwargs,
     ):
         """
         Metric calculation logic.
 
         Args:
-            logits (Tensor): model output predictions. Shape (B, L, N_items)
+            last_logits (Tensor): model output predictions for next item. Shape (B, N_items)
             item (Tensor): ground-truth labels. Shape (B)
-            attention_mask (Tensor): attention mask indicating non-pad tokens. Shape (B, L)
         Returns:
             metric (float | None): calculated metric.
                 If no items from batch appear in bins, returns None
         """
-        last_indices = attention_mask.sum(dim=1) - 1
-        batch_indices = torch.arange(logits.shape[0], device=logits.device)
-        last_logits = logits[batch_indices, last_indices, :]
         _, top_items = torch.topk(last_logits, k=self._k, dim=1)
         hit = top_items == item.reshape(-1, 1)
         if self._bin_mask is not None:
@@ -119,7 +109,7 @@ class NDCGMetric(HitRateMetric):
             hit = hit[self._bin_mask[item], :]
             if hit.shape[0] == 0:
                 return None
-        logs = torch.log2(torch.arange(2, self._k + 2, device=logits.device))
+        logs = torch.log2(torch.arange(2, self._k + 2, device=last_logits.device))
         # since only one item is relevant, IDCG is 1
         ndcg = torch.sum(hit / logs, dim=1)
         return ndcg.mean()
@@ -148,24 +138,19 @@ class CoverageMetric(HitRateMetric):
 
     def __call__(
         self,
-        logits: torch.Tensor,
+        last_logits: torch.Tensor,
         item: torch.Tensor,
-        attention_mask: torch.Tensor,
         **kwargs,
     ):
         """
         Metric calculation logic.
 
         Args:
-            logits (Tensor): model output predictions. Shape (B, L, N_items)
+            last_logits (Tensor): model output predictions for next item. Shape (B, N_items)
             item (Tensor): ground-truth labels. Shape (B)
-            attention_mask (Tensor): attention mask indicating non-pad tokens. Shape (B, L)
         Returns:
             metric (float): calculated metric.
         """
-        last_indices = attention_mask.sum(dim=1) - 1
-        batch_indices = torch.arange(logits.shape[0], device=logits.device)
-        last_logits = logits[batch_indices, last_indices, :]
         _, top_items = torch.topk(last_logits, k=self._k, dim=1)
         if self._bin_mask is not None:
             if self._bin_mask.device != item.device:

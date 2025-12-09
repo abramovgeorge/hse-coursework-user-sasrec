@@ -12,14 +12,11 @@ optimizer:
 lr_scheduler:
   _target_: torch.optim.lr_scheduler.ConstantLR
 loss_function:
-  _target_: src.loss.SASRecSCELoss
-  n_buckets: 615
-  bucket_size_x: 615
-  bucket_size_y: 256
-  mix_x: True
+  _target_: src.loss.SASRecBCELoss
+  num_neg: 100
 trainer:
   log_step: 50
-  n_epochs: 30
+  n_epochs: 300
   epoch_len: 5000
   device_tensors: ["seq", "item", "user"] # which tensors should be on device (ex. GPU)
   resume_from: null # null or path to the checkpoint dir with *.pth and config.yaml
