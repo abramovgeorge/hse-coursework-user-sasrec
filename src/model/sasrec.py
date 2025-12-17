@@ -231,7 +231,7 @@ class SASRec(nn.Module):
 
         with torch.no_grad():
             x_bucket = buckets @ x.T  # (n_b, hd) x (hd, b) -> (n_b, b)
-            x_bucket[:, seq.reshape(-1) == self.pad_token] = float("-inf")
+            x_bucket[:, seq.reshape(-1) == self._pad_token] = float("-inf")
             _, top_x_bucket = torch.topk(
                 x_bucket, dim=1, k=bucket_size_x
             )  # (n_b, bs_x)
@@ -239,7 +239,7 @@ class SASRec(nn.Module):
 
             y_bucket = buckets @ w.T  # (n_b, hd) x (hd, n_cl) -> (n_b, n_cl)
 
-            y_bucket[:, self.pad_token] = float("-inf")
+            y_bucket[:, self._pad_token] = float("-inf")
             _, top_y_bucket = torch.topk(
                 y_bucket, dim=1, k=bucket_size_y
             )  # (n_b, bs_y)
@@ -285,10 +285,10 @@ class SASRec(nn.Module):
         loss.scatter_reduce_(
             0, top_x_bucket.view(-1), loss_, reduce="amax", include_self=False
         )
-        loss = loss[(loss != 0) & (y != self.pad_token)]
+        loss = loss[(loss != 0) & (y != self._pad_token)]
         loss = torch.mean(loss)
 
-        return {"sce_loss": loss}
+        return loss
 
     def _get_last_logits(self, hidden_states, attention_mask, **batch):
         """
