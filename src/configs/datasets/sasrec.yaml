@@ -4,7 +4,7 @@ train:
   inter_type: "listens"
   yambda_size: "50m"
   min_inter_user: 1000
-  min_inter_item: 1000
+  min_inter_item: 10
   min_len: 5
   q: 0.95
   max_len: 200

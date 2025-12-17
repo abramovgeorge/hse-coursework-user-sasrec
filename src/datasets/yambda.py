@@ -6,6 +6,7 @@ import torch
 from torch.utils.data import Dataset
 
 from datasets import load_dataset
+from src.utils.io_utils import ROOT_PATH
 
 
 class YambdaDataset(Dataset):
@@ -49,12 +50,18 @@ class YambdaDataset(Dataset):
                 should be applied on the instance. Depend on the
                 tensor name.
         """
-        ds = load_dataset(
-            "yandex/yambda",
-            data_dir=f"flat/{yambda_size}",
-            data_files=f"{inter_type}.parquet",
-        )
-        df = ds["train"].to_pandas()
+        path = ROOT_PATH / "data" / "yambda" / f"{yambda_size}/{inter_type}.parquet"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if path.exists():
+            df = pd.read_parquet(path)
+        else:
+            ds = load_dataset(
+                "yandex/yambda",
+                data_dir=f"flat/{yambda_size}",
+                data_files=f"{inter_type}.parquet",
+            )
+            df = ds["train"].to_pandas()
+            df.to_parquet(path, index=False)
         if "played_ratio_pct" in df.columns:
             # we leave listens that lasted at least half of the track
             df = df[df["played_ratio_pct"] >= 50]

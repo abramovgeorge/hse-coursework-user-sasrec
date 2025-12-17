@@ -322,15 +322,12 @@ class SASRec(nn.Module):
         output["last_logits"] = self._get_last_logits(hidden_states, **batch)
 
         if self._loss_type == "sce":
-            output["sce_loss_fn"] = partial(
+            output["loss_fn"] = partial(
                 self._forward_sce, hidden_states=hidden_states, seq=seq
             )
             return output
         elif self._loss_type == "bce":
-            output["loss_fn"] = partial(
-                self._forward_bce,
-                hidden_states=hidden_states,
-            )
+            output["loss_fn"] = partial(self._forward_bce, hidden_states=hidden_states)
             return output
 
         logits = hidden_states @ self.item_emb.weight.T  # (B, L, n_item)
