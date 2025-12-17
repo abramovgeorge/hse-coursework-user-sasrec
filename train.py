@@ -30,6 +30,7 @@ def main(config):
 
     if config.trainer.device == "auto":
         device = "cuda" if torch.cuda.is_available() else "cpu"
+        device = "mps" if torch.backends.mps.is_available() else device
     else:
         device = config.trainer.device
 

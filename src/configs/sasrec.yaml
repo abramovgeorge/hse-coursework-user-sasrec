@@ -23,7 +23,7 @@ trainer:
   epoch_len: 5000
   device_tensors: ["seq", "item"] # which tensors should be on device (ex. GPU)
   resume_from: null # null or path to the checkpoint dir with *.pth and config.yaml
-  device: mps # device name or "auto"
+  device: auto # device name or "auto"
   override: True # if True, will override the previous run with the same name
   monitor: "max test_hitrate@10" # "off" or "max/min metric_name", i.e. our goal is to maximize/minimize metric
   save_period: 5 # checkpoint each save_period epochs in addition to the best epoch
