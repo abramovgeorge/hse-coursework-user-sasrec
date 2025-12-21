@@ -145,9 +145,12 @@ class BaseTrainer:
     def train(self):
         """
         Wrapper around training process to save model on keyboard interrupt.
+
+        Returns:
+            dict: logs that contain the last loss and metrics
         """
         try:
-            self._train_process()
+            return self._train_process()
         except KeyboardInterrupt as e:
             self.logger.info("Saving model on keyboard interrupt")
             self._save_checkpoint(self._last_epoch, save_best=False)
@@ -160,8 +163,12 @@ class BaseTrainer:
         Training model for an epoch, evaluating it on non-train partitions,
         and monitoring the performance improvement (for early stopping
         and saving the best checkpoint).
+
+        Returns:
+            last_logs (dict): logs that contain the last loss and metrics
         """
         not_improved_count = 0
+        last_logs = None
         for epoch in range(self.start_epoch, self.epochs + 1):
             self._last_epoch = epoch
             result = self._train_epoch(epoch)
@@ -169,6 +176,7 @@ class BaseTrainer:
             # save logged information into logs dict
             logs = {"epoch": epoch}
             logs.update(result)
+            last_logs = logs
 
             # print logged information to the screen
             for key, value in logs.items():
@@ -185,6 +193,8 @@ class BaseTrainer:
 
             if stop_process:  # early_stop
                 break
+
+        return last_logs
 
     def _train_epoch(self, epoch):
         """

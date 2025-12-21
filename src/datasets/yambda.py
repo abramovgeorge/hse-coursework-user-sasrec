@@ -50,7 +50,9 @@ class YambdaDataset(Dataset):
                 should be applied on the instance. Depend on the
                 tensor name.
         """
-        path = ROOT_PATH / "data" / "yambda" / f"{yambda_size}/{inter_type}.parquet"
+        path = (
+            ROOT_PATH / "data" / "yambda" / f"{yambda_size}" / f"{inter_type}.parquet"
+        )
         path.parent.mkdir(parents=True, exist_ok=True)
         if path.exists():
             df = pd.read_parquet(path)

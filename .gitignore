@@ -114,4 +114,5 @@ outputs/
 __MACOSX/
 
 # HSE cluster files
+results
 *.sbatch
