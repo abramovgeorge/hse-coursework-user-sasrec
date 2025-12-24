@@ -116,3 +116,6 @@ __MACOSX/
 # HSE cluster files
 results
 *.sbatch
+*.db
+push_to_cluster.sh
+pull_from_cluster.sh

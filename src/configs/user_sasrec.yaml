@@ -18,7 +18,7 @@ loss_function:
   bucket_size_y: 1024
   mix_x: True
 trainer:
-  log_step: 50
+  log_step: 1000
   n_epochs: 15
   epoch_len: 5000
   device_tensors: ["seq", "item", "user"] # which tensors should be on device (ex. GPU)

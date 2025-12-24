@@ -7,6 +7,8 @@ from hydra import compose, initialize
 from hydra.core.global_hydra import GlobalHydra
 from hydra.utils import instantiate
 from omegaconf import OmegaConf
+from optuna.storages import JournalStorage
+from optuna.storages.journal import JournalFileBackend
 
 from src.datasets.data_utils import get_dataloaders
 from src.trainer import Trainer
@@ -71,7 +73,7 @@ def run_train(config):
 
 def parse_args():
     p = argparse.ArgumentParser()
-    p.add_argument("--trials", type=int, default=50)
+    p.add_argument("--trials", type=int, default=1000)
     p.add_argument("--cn", default="baseline")
     return p.parse_args()
 
@@ -85,16 +87,31 @@ def main():
     initialize(version_base=None, config_path="src/configs")
 
     def objective(trial: optuna.Trial):
-        n_buckets = trial.suggest_int("n_buckets", 32, 64)
-        bucket_size_x = trial.suggest_int("bucket_size_x", 32, 64)
-        bucket_size_y = trial.suggest_int("bucket_size_y", 32, 64)
+        batch_size = trial.suggest_categorical(
+            "batch_size",
+            [32, 64, 128],
+        )
+        hidden_dim = trial.suggest_categorical(
+            "hidden_dim",
+            [32, 64, 128],
+        )
+        num_blocks = trial.suggest_int("num_blocks", 1, 8)
+        num_heads = trial.suggest_categorical("num_heads", [1, 2, 4, 8])
+        dropout_rate = trial.suggest_float("dropout_rate", 0.0, 1.0)
+        n_buckets = trial.suggest_int("n_buckets", 32, 512, log=True)
+        bucket_size_y = trial.suggest_int("bucket_size_y", 32, 512, log=True)
         mix_x = trial.suggest_categorical("mix_x", [True, False])
 
         cfg = compose(
             config_name=args.cn,
             overrides=[
+                f"dataloader.batch_size={batch_size}",
+                f"model.hidden_dim={hidden_dim}",
+                f"model.num_blocks={num_blocks}",
+                f"model.num_heads={num_heads}",
+                f"model.dropout_rate={dropout_rate}",
                 f"loss_function.n_buckets={n_buckets}",
-                f"loss_function.bucket_size_x={bucket_size_x}",
+                f"loss_function.bucket_size_x={n_buckets}",
                 f"loss_function.bucket_size_y={bucket_size_y}",
                 f"loss_function.mix_x={str(mix_x).lower()}",
             ],
@@ -104,8 +121,14 @@ def main():
         return float(results["test_hitrate@10"])
 
     safe_cn = "".join(c if (c.isalnum() or c in ("-", "_")) else "_" for c in args.cn)
-    storage_path = f"{safe_cn}.db"
-    storage = f"sqlite:///{storage_path}"
+    journal_path = f"./{safe_cn}_optuna.log"
+    storage = JournalStorage(JournalFileBackend(journal_path))
+    study = optuna.create_study(
+        direction="maximize",
+        storage=storage,
+        study_name=safe_cn,
+        load_if_exists=True,
+    )
 
     study = optuna.create_study(
         direction="maximize",
