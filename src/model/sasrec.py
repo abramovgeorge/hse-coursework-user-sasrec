@@ -197,7 +197,7 @@ class SASRec(nn.Module):
             bucket_size_y (int): bucket size for targets
             mix_x (bool): if True, mix hidden states with random matrix
         Returns:
-            output (dict): output dict containing SCE loss.
+            loss (torch.float): SCE loss.
         """
 
         seq = seq[:, :-1]
@@ -298,7 +298,7 @@ class SASRec(nn.Module):
                 hidden_states. Shape: (B, L, D)
             attention_mask (torch.tensor): attention mask indicating non-pad tokens. Shape (B, L)
         Returns:
-            output (dict): output dict containing last logit tensor of shape (B, N_items)
+            last_logits (torch.tensor): last logit tensor of shape (B, N_items)
         """
         last_indices = attention_mask.sum(dim=1) - 1
         batch_indices = torch.arange(

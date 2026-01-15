@@ -43,6 +43,7 @@ def set_random_seed(seed):
     np.random.seed(seed)
     random.seed(seed)
     os.environ["PYTHONHASHSEED"] = str(seed)
+    torch.use_deterministic_algorithms(True, warn_only=True)
 
 
 # https://github.com/wandb/wandb/blob/main/wandb/sdk/lib/runid.py

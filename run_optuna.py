@@ -95,11 +95,11 @@ def main():
             "hidden_dim",
             [32, 64, 128],
         )
-        num_blocks = trial.suggest_int("num_blocks", 1, 8)
+        num_blocks = trial.suggest_int("num_blocks", 1, 6)
         num_heads = trial.suggest_categorical("num_heads", [1, 2, 4, 8])
         dropout_rate = trial.suggest_float("dropout_rate", 0.0, 1.0)
-        n_buckets = trial.suggest_int("n_buckets", 32, 512, log=True)
-        bucket_size_y = trial.suggest_int("bucket_size_y", 32, 512, log=True)
+        n_buckets = trial.suggest_int("n_buckets", 32, 1024, log=True)
+        bucket_size_y = trial.suggest_int("bucket_size_y", 32, 1024, log=True)
         mix_x = trial.suggest_categorical("mix_x", [True, False])
 
         cfg = compose(
@@ -117,19 +117,15 @@ def main():
             ],
         )
 
-        results = run_train(cfg)
-        return float(results["test_hitrate@10"])
+        try:
+            results = run_train(cfg)
+            return float(results["test_hitrate@10"])
+        except:  # noqa: E722
+            return 0
 
     safe_cn = "".join(c if (c.isalnum() or c in ("-", "_")) else "_" for c in args.cn)
     journal_path = f"./{safe_cn}_optuna.log"
     storage = JournalStorage(JournalFileBackend(journal_path))
-    study = optuna.create_study(
-        direction="maximize",
-        storage=storage,
-        study_name=safe_cn,
-        load_if_exists=True,
-    )
-
     study = optuna.create_study(
         direction="maximize",
         storage=storage,

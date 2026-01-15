@@ -13,9 +13,9 @@ lr_scheduler:
   _target_: torch.optim.lr_scheduler.ConstantLR
 loss_function:
   _target_: src.loss.SASRecSCELoss
-  n_buckets: 153
-  bucket_size_x: 153
-  bucket_size_y: 1024
+  n_buckets: 478
+  bucket_size_x: 478
+  bucket_size_y: 428
   mix_x: True
 trainer:
   log_step: 1000

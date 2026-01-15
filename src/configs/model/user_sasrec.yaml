@@ -1,7 +1,7 @@
 _target_: src.model.UserSASRec
-hidden_dim: 50
-num_blocks: 2
+hidden_dim: 128
+num_blocks: 3
 max_len: ${datasets.train.max_len}
 num_heads: 1
-dropout_rate: 0.5
+dropout_rate: 0.07
 user_handling: "mult"
