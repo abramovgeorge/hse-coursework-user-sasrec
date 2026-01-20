@@ -1,5 +1,6 @@
 from abc import abstractmethod
 
+import optuna
 import torch
 from numpy import inf
 from torch.nn.utils import clip_grad_norm_
@@ -30,6 +31,8 @@ class BaseTrainer:
         epoch_len=None,
         skip_oom=True,
         batch_transforms=None,
+        trial=None,
+        optuna_metric=None,
     ):
         """
         Args:
@@ -54,6 +57,8 @@ class BaseTrainer:
             batch_transforms (dict[Callable] | None): transforms that
                 should be applied on the whole batch. Depend on the
                 tensor name.
+            trial (optuna.Trial | None): if not None, current optuna trial object used for run pruning
+            optuna_metric (str | None): if not None, name of the metric that should be reported to the trial object
         """
         self.is_train = True
 
@@ -71,6 +76,9 @@ class BaseTrainer:
         self.optimizer = optimizer
         self.lr_scheduler = lr_scheduler
         self.batch_transforms = batch_transforms
+
+        self.trial = trial
+        self.optuna_metric = optuna_metric
 
         # define dataloaders
         self.train_dataloader = dataloaders["train"]
@@ -193,6 +201,12 @@ class BaseTrainer:
 
             if stop_process:  # early_stop
                 break
+
+            if self.trial is not None:
+                self.trial.report(logs[self.optuna_metric], step=epoch)
+
+                if self.trial.should_prune():
+                    raise optuna.exceptions.TrialPruned()
 
         return last_logs
 
