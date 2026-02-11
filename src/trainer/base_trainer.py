@@ -32,7 +32,6 @@ class BaseTrainer:
         skip_oom=True,
         batch_transforms=None,
         trial=None,
-        optuna_metric=None,
     ):
         """
         Args:
@@ -57,8 +56,8 @@ class BaseTrainer:
             batch_transforms (dict[Callable] | None): transforms that
                 should be applied on the whole batch. Depend on the
                 tensor name.
-            trial (optuna.Trial | None): if not None, current optuna trial object used for run pruning
-            optuna_metric (str | None): if not None, name of the metric that should be reported to the trial object
+            trial (optuna.Trial | None): if not None, current optuna trial object used for run pruning,
+                metric used for optuna is the same used for monitoring
         """
         self.is_train = True
 
@@ -78,7 +77,6 @@ class BaseTrainer:
         self.batch_transforms = batch_transforms
 
         self.trial = trial
-        self.optuna_metric = optuna_metric
 
         # define dataloaders
         self.train_dataloader = dataloaders["train"]
@@ -155,10 +153,11 @@ class BaseTrainer:
         Wrapper around training process to save model on keyboard interrupt.
 
         Returns:
-            dict: logs that contain the last loss and metrics
+            float: best monitored metric
         """
         try:
-            return self._train_process()
+            self._train_process()
+            return self.mnt_best
         except KeyboardInterrupt as e:
             self.logger.info("Saving model on keyboard interrupt")
             self._save_checkpoint(self._last_epoch, save_best=False)
@@ -171,12 +170,8 @@ class BaseTrainer:
         Training model for an epoch, evaluating it on non-train partitions,
         and monitoring the performance improvement (for early stopping
         and saving the best checkpoint).
-
-        Returns:
-            last_logs (dict): logs that contain the last loss and metrics
         """
         not_improved_count = 0
-        last_logs = None
         for epoch in range(self.start_epoch, self.epochs + 1):
             self._last_epoch = epoch
             result = self._train_epoch(epoch)
@@ -184,7 +179,6 @@ class BaseTrainer:
             # save logged information into logs dict
             logs = {"epoch": epoch}
             logs.update(result)
-            last_logs = logs
 
             # print logged information to the screen
             for key, value in logs.items():
@@ -203,12 +197,10 @@ class BaseTrainer:
                 break
 
             if self.trial is not None:
-                self.trial.report(logs[self.optuna_metric], step=epoch)
+                self.trial.report(logs[self.mnt_metric], step=epoch)
 
                 if self.trial.should_prune():
                     raise optuna.exceptions.TrialPruned()
-
-        return last_logs
 
     def _train_epoch(self, epoch):
         """

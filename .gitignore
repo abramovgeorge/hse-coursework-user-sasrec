@@ -119,3 +119,6 @@ results
 *.db
 push_to_cluster.sh
 pull_from_cluster.sh
+
+# Plots for coursework
+plots.*

@@ -17,7 +17,7 @@ from src.utils.init_utils import set_random_seed, setup_saving_and_logging
 warnings.filterwarnings("ignore", category=UserWarning)
 
 
-def run_train(config, trial, optuna_metric):
+def run_train(config, trial):
     """
     Pure callable training entrypoint: takes a composed Hydra config and returns final metrics.
     """
@@ -68,7 +68,6 @@ def run_train(config, trial, optuna_metric):
         batch_transforms=batch_transforms,
         skip_oom=config.trainer.get("skip_oom", True),
         trial=trial,
-        optuna_metric=optuna_metric,
     )
     return trainer.train()
 
@@ -77,7 +76,6 @@ def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--trials", type=int, default=1000)
     p.add_argument("--cn", default="baseline")
-    p.add_argument("--metric", default="test_hitrate@10")
     return p.parse_args()
 
 
@@ -106,8 +104,8 @@ def main():
         num_blocks = trial.suggest_int("num_blocks", 1, 6)
         num_heads = trial.suggest_categorical("num_heads", [1, 2, 4, 8])
         dropout_rate = trial.suggest_float("dropout_rate", 0.0, 1.0)
-        n_buckets = trial.suggest_int("n_buckets", 32, 2048, log=True)
-        bucket_size_y = trial.suggest_int("bucket_size_y", 32, 2048, log=True)
+        n_buckets = trial.suggest_int("n_buckets", 32, 1024, log=True)
+        bucket_size_y = trial.suggest_int("bucket_size_y", 32, 1024, log=True)
         mix_x = trial.suggest_categorical("mix_x", [True, False])
 
         cfg = compose(
@@ -126,8 +124,7 @@ def main():
         )
 
         try:
-            results = run_train(cfg, trial=trial, optuna_metric=args.metric)
-            return float(results[args.metric])
+            return run_train(cfg, trial=trial)
         except optuna.exceptions.TrialPruned:
             raise
         except:  # noqa: E722
