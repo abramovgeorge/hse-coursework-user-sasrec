@@ -67,6 +67,9 @@ class SessionAwareDataset(Dataset):
         train["item_id"] = train["item_id"].map(item_map)
         test["uid"] = test["uid"].map(user_map)
         test["item_id"] = test["item_id"].map(item_map)
+        if val is not None:
+            val["uid"] = val["uid"].map(user_map)
+            val["item_id"] = val["item_id"].map(item_map)
 
         if name == "train":
             self._df = train.copy()
