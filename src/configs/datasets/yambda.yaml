@@ -6,8 +6,21 @@ train:
   min_inter_user: 1000
   min_inter_item: 10
   min_len: 20
-  q: 0.95
+  q: 0.9
+  val_q: 0.5
   max_len: 200
+  instance_transforms: ${transforms.instance_transforms.inference}
+val:
+  _target_: src.datasets.YambdaDataset
+  name: "val"
+  inter_type: ${..train.inter_type}
+  yambda_size: ${..train.yambda_size}
+  min_inter_user: ${..train.min_inter_user}
+  min_inter_item: ${..train.min_inter_item}
+  min_len: ${..train.min_len}
+  q: ${..train.q} # this is strictly required for preventing data leakage
+  val_q: ${..train.val_q}
+  max_len: ${..train.max_len}
   instance_transforms: ${transforms.instance_transforms.inference}
 test:
   _target_: src.datasets.YambdaDataset
@@ -18,5 +31,6 @@ test:
   min_inter_item: ${..train.min_inter_item}
   min_len: ${..train.min_len}
   q: ${..train.q} # this is strictly required for preventing data leakage
+  val_q: ${..train.val_q}
   max_len: ${..train.max_len}
   instance_transforms: ${transforms.instance_transforms.inference}

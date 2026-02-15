@@ -1,0 +1,33 @@
+train:
+  _target_: src.datasets.GowallaDataset
+  name: "train"
+  min_inter_user: 100
+  min_inter_item: 100
+  min_len: 20
+  q: 0.8
+  val_q: 0.5
+  max_len: 200
+  inactivity_thresh: 604800 # 60 * 60 * 24 * 7
+  instance_transforms: ${transforms.instance_transforms.inference}
+val:
+  _target_: src.datasets.GowallaDataset
+  name: "val"
+  min_inter_user: ${..train.min_inter_user}
+  min_inter_item: ${..train.min_inter_item}
+  min_len: ${..train.min_len}
+  q: ${..train.q} # this is strictly required for preventing data leakage
+  val_q: ${..train.val_q} # this is strictly required for preventing data leakage
+  max_len: ${..train.max_len}
+  inactivity_thresh: ${..train.inactivity_thresh}
+  instance_transforms: ${transforms.instance_transforms.inference}
+test:
+  _target_: src.datasets.GowallaDataset
+  name: "test"
+  min_inter_user: ${..train.min_inter_user}
+  min_inter_item: ${..train.min_inter_item}
+  min_len: ${..train.min_len}
+  q: ${..train.q} # this is strictly required for preventing data leakage
+  val_q: ${..train.val_q} # this is strictly required for preventing data leakage
+  max_len: ${..train.max_len}
+  inactivity_thresh: ${..train.inactivity_thresh}
+  instance_transforms: ${transforms.instance_transforms.inference}
