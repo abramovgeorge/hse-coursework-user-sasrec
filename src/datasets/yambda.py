@@ -12,7 +12,9 @@ from src.utils.io_utils import ROOT_PATH
 
 class YambdaDataset(SessionAwareDataset):
     """
-    Yambda-50m dataset
+    Yambda dataset
+    https://huggingface.co/datasets/yandex/yambda
+    https://arxiv.org/abs/2505.22238
     """
 
     def __init__(
@@ -20,6 +22,7 @@ class YambdaDataset(SessionAwareDataset):
         *args,
         inter_type="likes",
         yambda_size="50m",
+        **kwargs,
     ):
         """
         Args:
@@ -28,7 +31,7 @@ class YambdaDataset(SessionAwareDataset):
         """
         self._inter_type = inter_type
         self._yambda_size = yambda_size
-        super().__init__(*args)
+        super().__init__(*args, **kwargs)
 
     def _load_data(self):
         """

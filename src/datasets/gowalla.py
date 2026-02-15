@@ -13,6 +13,7 @@ from src.utils.io_utils import ROOT_PATH
 class GowallaDataset(SessionAwareDataset):
     """
     Gowalla dataset
+    https://snap.stanford.edu/data/loc-gowalla.html
     """
 
     def _load_data(self):
