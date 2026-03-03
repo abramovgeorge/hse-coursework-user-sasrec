@@ -1,8 +1,8 @@
 defaults:
-  - model: user_sasrec
+  - model: sasrec_yambda
   - writer: cometml
   - metrics: sasrec
-  - datasets: gowalla
+  - datasets: yambda_test
   - dataloader: sasrec
   - transforms: sasrec
   - _self_
@@ -13,15 +13,15 @@ lr_scheduler:
   _target_: torch.optim.lr_scheduler.ConstantLR
 loss_function:
   _target_: src.loss.SASRecSCELoss
-  n_buckets: 768
-  bucket_size_x: 768
-  bucket_size_y: 144
+  n_buckets: 80
+  bucket_size_x: 80
+  bucket_size_y: 159
   mix_x: True
 trainer:
   log_step: 1000
-  n_epochs: 100
+  n_epochs: 50
   epoch_len: 5000
-  device_tensors: ["seq", "item", "user"] # which tensors should be on device (ex. GPU)
+  device_tensors: ["seq", "item"] # which tensors should be on device (ex. GPU)
   resume_from: null # null or path to the checkpoint dir with *.pth and config.yaml
   device: auto # device name or "auto"
   override: True # if True, will override the previous run with the same name

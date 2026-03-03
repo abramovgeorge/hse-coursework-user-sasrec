@@ -2,7 +2,7 @@ defaults:
   - model: sasrec
   - writer: cometml
   - metrics: sasrec
-  - datasets: yambda
+  - datasets: gowalla
   - dataloader: sasrec
   - transforms: sasrec
   - _self_
@@ -13,9 +13,9 @@ lr_scheduler:
   _target_: torch.optim.lr_scheduler.ConstantLR
 loss_function:
   _target_: src.loss.SASRecSCELoss
-  n_buckets: 66
-  bucket_size_x: 66
-  bucket_size_y: 57
+  n_buckets: 80
+  bucket_size_x: 80
+  bucket_size_y: 159
   mix_x: True
 trainer:
   log_step: 1000

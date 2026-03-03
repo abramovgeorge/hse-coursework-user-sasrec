@@ -1,9 +1,9 @@
 defaults:
-  - model: user_sasrec
+  - model: user_sasrec_yambda
   - writer: cometml
   - metrics: sasrec
-  - datasets: gowalla
-  - dataloader: sasrec
+  - datasets: yambda_test
+  - dataloader: user_sasrec_yambda
   - transforms: sasrec
   - _self_
 optimizer:
@@ -19,8 +19,8 @@ loss_function:
   mix_x: True
 trainer:
   log_step: 1000
-  n_epochs: 100
-  epoch_len: 5000
+  n_epochs: 25
+  epoch_len: 1000
   device_tensors: ["seq", "item", "user"] # which tensors should be on device (ex. GPU)
   resume_from: null # null or path to the checkpoint dir with *.pth and config.yaml
   device: auto # device name or "auto"

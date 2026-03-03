@@ -174,6 +174,14 @@ class SessionAwareDataset(Dataset):
         test = test[test["uid"].isin(train["uid"])]
         if val_q is not None:
             timestamp_val_q = np.quantile(test["timestamp"], q=val_q)
+            test_session_times = test.groupby("session_id")["timestamp"].agg(
+                ["min", "max"]
+            )
+            bad_sessions_val_test = test_session_times[
+                (test_session_times["min"] <= timestamp_val_q)
+                & (test_session_times["max"] > timestamp_val_q)
+            ].index
+            test = test[~test["session_id"].isin(bad_sessions_val_test)]
             val = test[test["timestamp"] <= timestamp_val_q].copy()
             test = test[test["timestamp"] > timestamp_val_q].copy()
         else:
