@@ -324,21 +324,16 @@ class UserSASRec(nn.Module):
 
         return loss
 
-    def _get_last_logits(self, hidden_states, attention_mask, **batch):
+    def _get_last_logits(self, hidden_states, **batch):
         """
         Get last logits for metric calculation
         Args:
             hidden_states (torch.tensor): tensor containing precomputed
                 hidden_states. Shape: (B, L, D)
-            attention_mask (torch.tensor): attention mask indicating non-pad tokens. Shape (B, L)
         Returns:
-            output (dict): output dict containing last logit tensor of shape (B, N_items)
+            last_logits (torch.tensor): last logit tensor of shape (B, N_items)
         """
-        last_indices = attention_mask.sum(dim=1) - 1
-        batch_indices = torch.arange(
-            hidden_states.shape[0], device=hidden_states.device
-        )
-        last_states = hidden_states[batch_indices, last_indices, :]  # (B, D)
+        last_states = hidden_states[:, -1, :]  # (B, D)
         last_logits = last_states @ self.item_emb.weight.T  # (B, N_items)
         return last_logits
 
@@ -355,8 +350,10 @@ class UserSASRec(nn.Module):
         hidden_states = self._get_hidden_states(seq, user)  # (B, L, D)
 
         output = dict()
-        output["last_logits"] = self._get_last_logits(hidden_states, **batch)
 
+        # we don't count top-n recommendation metrics on train, saves time and memory
+        if not self.training:
+            output["last_logits"] = self._get_last_logits(hidden_states, **batch)
         if self._loss_type == "sce":
             output["loss_fn"] = partial(
                 self._forward_sce, hidden_states=hidden_states, seq=seq

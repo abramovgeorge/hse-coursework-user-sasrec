@@ -2,7 +2,7 @@ defaults:
   - model: user_sasrec
   - writer: cometml
   - metrics: sasrec
-  - datasets: gowalla
+  - datasets: yambda
   - dataloader: sasrec
   - transforms: sasrec
   - _self_

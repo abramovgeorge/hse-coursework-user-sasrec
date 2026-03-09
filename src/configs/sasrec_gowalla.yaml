@@ -1,13 +1,11 @@
 defaults:
-  - model: user_sasrec_yambda
+  - model: sasrec
   - writer: cometml
   - metrics: sasrec
-  - datasets: yambda_test
+  - datasets: gowalla
   - dataloader: sasrec
   - transforms: sasrec
   - _self_
-dataloader:
-  batch_size: 128
 optimizer:
   _target_: torch.optim.Adam
   lr: 1e-3
@@ -15,20 +13,20 @@ lr_scheduler:
   _target_: torch.optim.lr_scheduler.ConstantLR
 loss_function:
   _target_: src.loss.SASRecSCELoss
-  n_buckets: 768
-  bucket_size_x: 768
-  bucket_size_y: 144
-  mix_x: True
+  n_buckets: 110
+  bucket_size_x: 110
+  bucket_size_y: 256
+  mix_x: False
 trainer:
-  log_step: 1000
-  n_epochs: 25
-  epoch_len: 1000
-  device_tensors: ["seq", "item", "user"] # which tensors should be on device (ex. GPU)
+  log_step: 100
+  n_epochs: 5
+  epoch_len: null
+  device_tensors: ["seq", "item"] # which tensors should be on device (ex. GPU)
   resume_from: null # null or path to the checkpoint dir with *.pth and config.yaml
   device: auto # device name or "auto"
   override: True # if True, will override the previous run with the same name
   monitor: "max val_hitrate@10" # "off" or "max/min metric_name", i.e. our goal is to maximize/minimize metric
-  save_period: 10 # checkpoint each save_period epochs in addition to the best epoch
-  early_stop: 10 # epochs for early stopping
+  save_period: 1 # checkpoint each save_period epochs in addition to the best epoch
+  early_stop: 300 # epochs for early stopping
   save_dir: "saved"
   seed: 1

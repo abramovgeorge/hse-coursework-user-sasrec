@@ -3,12 +3,13 @@ train:
   name: "train"
   inter_type: "listens"
   yambda_size: "50m"
-  min_inter_user: 1000
-  min_inter_item: 10
+  min_inter_user: 20
+  min_inter_item: 5
   min_len: 20
   q: 0.9
   val_q: 0.5
   max_len: 200
+  inactivity_thresh: 1800 # 60 * 30
   instance_transforms: ${transforms.instance_transforms.inference}
 val:
   _target_: src.datasets.YambdaDataset

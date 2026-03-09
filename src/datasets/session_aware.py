@@ -14,7 +14,7 @@ class SessionAwareDataset(Dataset):
     def __init__(
         self,
         name="train",
-        inactivity_thresh=1800,
+        inactivity_thresh=None,
         q=0.8,
         val_q=None,
         min_inter_user=None,
@@ -28,8 +28,10 @@ class SessionAwareDataset(Dataset):
         """
         Args:
             name (str): dataset partition name
-            inactivity_thresh (int): length of the inactivity window in seconds,
-                used for splitting the continuous dataset into sessions
+            inactivity_thresh (int | None): if not None,
+                length of the inactivity window in seconds,
+                used for splitting the continuous dataset into sessions.
+                If None, standard setting is used
             q (float): fraction (quantile-based) of the train data
             val_q (float | None): fraction (quantile-based) of the test data
                 to be used as validation. If None, the validation set is empty
@@ -46,28 +48,33 @@ class SessionAwareDataset(Dataset):
         """
         df = self._load_data()
 
-        item_vcs = df["item_id"].value_counts()
-        user_vcs = df["uid"].value_counts()
         if min_inter_item is not None:
-            df = df[df["item_id"].isin(item_vcs[item_vcs > min_inter_item].index)]
+            item_vcs = df.groupby("item_id")["uid"].nunique()
+            df = df[df["item_id"].isin(item_vcs[item_vcs >= min_inter_item].index)]
         if min_inter_user is not None:
-            df = df[df["uid"].isin(user_vcs[user_vcs > min_inter_user].index)]
+            user_vcs = df.groupby("uid")["item_id"].nunique()
+            df = df[df["uid"].isin(user_vcs[user_vcs >= min_inter_user].index)]
 
         df = self._create_session_ids(df, inactivity_thresh)
         session_sizes = df["session_id"].value_counts()
         if min_len is not None:
             df = df[df["session_id"].isin(session_sizes[session_sizes > min_len].index)]
 
-        train, val, test = self._train_test_split(df, q, val_q)
+        train, val, test = self._train_test_split(
+            df, q, val_q, remove_split_sessions=inactivity_thresh is not None
+        )
         user_map = {uid: i for i, uid in enumerate(sorted(train["uid"].unique()))}
         item_map = {iid: i for i, iid in enumerate(sorted(train["item_id"].unique()))}
         self.n_users = len(user_map)
         self.n_items = len(item_map)
+        train = train.copy()
         train["uid"] = train["uid"].map(user_map)
         train["item_id"] = train["item_id"].map(item_map)
+        test = test.copy()
         test["uid"] = test["uid"].map(user_map)
         test["item_id"] = test["item_id"].map(item_map)
         if val is not None:
+            val = val.copy()
             val["uid"] = val["uid"].map(user_map)
             val["item_id"] = val["item_id"].map(item_map)
 
@@ -128,7 +135,7 @@ class SessionAwareDataset(Dataset):
         return NotImplementedError()
 
     @staticmethod
-    def _create_session_ids(df, inactivity_thresh=1800):
+    def _create_session_ids(df, inactivity_thresh):
         """
         Create session ids by inactivity threshold.
 
@@ -138,6 +145,8 @@ class SessionAwareDataset(Dataset):
         Returns:
             pd.DataFrame: dataset with added global session ids
         """
+        if inactivity_thresh is None:
+            inactivity_thresh = 10**18
         df = df.copy()
         df = df.sort_values(["uid", "timestamp"]).reset_index(drop=True)
         df["time_gap"] = df.groupby("uid")["timestamp"].diff()
@@ -147,41 +156,47 @@ class SessionAwareDataset(Dataset):
         return df.drop(columns=["time_gap", "is_new_session", "user_session_id"])
 
     @staticmethod
-    def _train_test_split(df, q, val_q):
+    def _train_test_split(df, q, val_q, remove_split_sessions=True):
         """
-        Split the dataset into train and test subsets via time split.
+        Split the dataset into train and test subsets via the time split.
 
         Args:
             df (pd.DataFrame): dataset as a pandas dataframe, must contain session ids.
             q (float): fraction of the train data.
             val_q (float | None): fraction of the test data to be used as validation.
                 If None, the validation set is empty
+            remove_split_sessions (bool): whether to remove sessions which are split by
+                the global time split.
         Returns:
             tuple(pd.DataFrame, pd.DataFrame | None, pd.DataFrame):
                 train, val and test subsets.
         """
         timestamp_q = np.quantile(df["timestamp"], q=q)
-        session_times = df.groupby("session_id")["timestamp"].agg(["min", "max"])
-        bad_sessions = session_times[
-            (session_times["min"] < timestamp_q) & (session_times["max"] >= timestamp_q)
-        ].index
-        df = df[~df["session_id"].isin(bad_sessions)]
+        if remove_split_sessions:
+            session_times = df.groupby("session_id")["timestamp"].agg(["min", "max"])
+            bad_sessions = session_times[
+                (session_times["min"] < timestamp_q)
+                & (session_times["max"] >= timestamp_q)
+            ].index
+            df = df[~df["session_id"].isin(bad_sessions)]
         train, test = (
-            df[df["timestamp"] <= timestamp_q],
-            df[df["timestamp"] > timestamp_q],
+            df[df["timestamp"] < timestamp_q],
+            df[df["timestamp"] >= timestamp_q],
         )
+        # train = train[~train["uid"].isin(test["uid"])]
         test = test[test["item_id"].isin(train["item_id"])]
         test = test[test["uid"].isin(train["uid"])]
         if val_q is not None:
             timestamp_val_q = np.quantile(test["timestamp"], q=val_q)
-            test_session_times = test.groupby("session_id")["timestamp"].agg(
-                ["min", "max"]
-            )
-            bad_sessions_val_test = test_session_times[
-                (test_session_times["min"] <= timestamp_val_q)
-                & (test_session_times["max"] > timestamp_val_q)
-            ].index
-            test = test[~test["session_id"].isin(bad_sessions_val_test)]
+            if remove_split_sessions:
+                test_session_times = test.groupby("session_id")["timestamp"].agg(
+                    ["min", "max"]
+                )
+                bad_sessions_val_test = test_session_times[
+                    (test_session_times["min"] <= timestamp_val_q)
+                    & (test_session_times["max"] > timestamp_val_q)
+                ].index
+                test = test[~test["session_id"].isin(bad_sessions_val_test)]
             val = test[test["timestamp"] <= timestamp_val_q].copy()
             test = test[test["timestamp"] > timestamp_val_q].copy()
         else:
