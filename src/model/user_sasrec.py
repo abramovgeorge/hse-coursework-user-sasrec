@@ -157,7 +157,7 @@ class UserSASRec(nn.Module):
             user_emb = user_emb.unsqueeze(1).expand(-1, hidden_states.shape[1], -1)
             user_emb = self.emb_dropout(user_emb)
             user_emb = self.user_linear(user_emb)
-            hidden_states *= user_emb**2
+            hidden_states *= user_emb
         elif self._user_handling == "tucker":
             # for tucker, we use the user embeddings in forward
             pass
@@ -324,17 +324,19 @@ class UserSASRec(nn.Module):
 
         return loss
 
-    def _get_last_logits(self, hidden_states, **batch):
+    def _get_last_logits(self, hidden_states, seq, **batch):
         """
-        Get last logits for metric calculation
+        Get last logits for metric calculation. Filters seen items
         Args:
             hidden_states (torch.tensor): tensor containing precomputed
                 hidden_states. Shape: (B, L, D)
+            seq (torch.tensor): tensor containing input sequences. Shape: (B, L)
         Returns:
             last_logits (torch.tensor): last logit tensor of shape (B, N_items)
         """
         last_states = hidden_states[:, -1, :]  # (B, D)
         last_logits = last_states @ self.item_emb.weight.T  # (B, N_items)
+        last_logits.scatter_(dim=1, index=seq, value=-1e9)
         return last_logits
 
     def forward(self, seq, user, **batch):
@@ -353,7 +355,8 @@ class UserSASRec(nn.Module):
 
         # we don't count top-n recommendation metrics on train, saves time and memory
         if not self.training:
-            output["last_logits"] = self._get_last_logits(hidden_states, **batch)
+            output["last_logits"] = self._get_last_logits(hidden_states, seq, **batch)
+
         if self._loss_type == "sce":
             output["loss_fn"] = partial(
                 self._forward_sce, hidden_states=hidden_states, seq=seq

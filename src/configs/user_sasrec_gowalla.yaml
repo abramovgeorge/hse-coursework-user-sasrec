@@ -2,7 +2,7 @@ defaults:
   - model: sasrec_gowalla
   - writer: cometml
   - metrics: sasrec
-  - datasets: gowalla_test
+  - datasets: gowalla
   - dataloader: sasrec
   - transforms: sasrec
   - _self_
