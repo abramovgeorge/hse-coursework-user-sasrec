@@ -133,8 +133,8 @@ class CoverageMetric(HitRateMetric):
         """
         super().__init__(*args, **kwargs)
         self._seen_items = set()
-        if self._bin_mask is not None:
-            self._n_items = torch.sum(self._bin_mask)
+        # if self._bin_mask is not None:
+        #     self._n_items = torch.sum(self._bin_mask)
 
     def __call__(
         self,

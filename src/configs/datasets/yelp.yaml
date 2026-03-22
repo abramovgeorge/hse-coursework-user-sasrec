@@ -1,0 +1,33 @@
+train:
+  _target_: src.datasets.YelpDataset
+  name: "train"
+  min_inter_user: 1 # we use already preprocessed dataset
+  min_inter_item: 1 # we use already preprocessed dataset
+  min_len: 10
+  q: 0.9
+  val_q: 0.5
+  max_len: 200
+  inactivity_thresh: null # should be always null
+  instance_transforms: ${transforms.instance_transforms.inference}
+val:
+  _target_: src.datasets.YelpDataset
+  name: "val"
+  min_inter_user: ${..train.min_inter_user}
+  min_inter_item: ${..train.min_inter_item}
+  min_len: ${..train.min_len}
+  q: ${..train.q} # this is strictly required for preventing data leakage
+  val_q: ${..train.val_q} # this is strictly required for preventing data leakage
+  max_len: ${..train.max_len}
+  inactivity_thresh: ${..train.inactivity_thresh}
+  instance_transforms: ${transforms.instance_transforms.inference}
+test:
+  _target_: src.datasets.YelpDataset
+  name: "test"
+  min_inter_user: ${..train.min_inter_user}
+  min_inter_item: ${..train.min_inter_item}
+  min_len: ${..train.min_len}
+  q: ${..train.q} # this is strictly required for preventing data leakage
+  val_q: ${..train.val_q} # this is strictly required for preventing data leakage
+  max_len: ${..train.max_len}
+  inactivity_thresh: ${..train.inactivity_thresh}
+  instance_transforms: ${transforms.instance_transforms.inference}

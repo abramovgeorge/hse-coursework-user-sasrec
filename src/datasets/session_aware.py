@@ -58,10 +58,12 @@ class SessionAwareDataset(Dataset):
         df = self._create_session_ids(df, inactivity_thresh)
         session_sizes = df["session_id"].value_counts()
         if min_len is not None:
-            df = df[df["session_id"].isin(session_sizes[session_sizes > min_len].index)]
+            df = df[
+                df["session_id"].isin(session_sizes[session_sizes >= min_len].index)
+            ]
 
         train, val, test = self._train_test_split(
-            df, q, val_q, remove_split_sessions=inactivity_thresh is not None
+            df, q, val_q, session_aware=inactivity_thresh is not None
         )
         user_map = {uid: i for i, uid in enumerate(sorted(train["uid"].unique()))}
         item_map = {iid: i for i, iid in enumerate(sorted(train["item_id"].unique()))}
@@ -156,7 +158,7 @@ class SessionAwareDataset(Dataset):
         return df.drop(columns=["time_gap", "is_new_session", "user_session_id"])
 
     @staticmethod
-    def _train_test_split(df, q, val_q, remove_split_sessions=True):
+    def _train_test_split(df, q, val_q, session_aware=True):
         """
         Split the dataset into train and test subsets via the time split.
 
@@ -165,14 +167,18 @@ class SessionAwareDataset(Dataset):
             q (float): fraction of the train data.
             val_q (float | None): fraction of the test data to be used as validation.
                 If None, the validation set is empty
-            remove_split_sessions (bool): whether to remove sessions which are split by
-                the global time split.
+            session_aware (bool): whether we use standard setting or session-aware setting.
+                For the latter we remove sessions which are split
+                by the global time split and split by session starts quantile
         Returns:
             tuple(pd.DataFrame, pd.DataFrame | None, pd.DataFrame):
                 train, val and test subsets.
         """
-        timestamp_q = np.quantile(df["timestamp"], q=q)
-        if remove_split_sessions:
+        if session_aware:
+            timestamp_q = np.quantile(df.groupby("session_id")["timestamp"].min(), q=q)
+        else:
+            timestamp_q = np.quantile(df["timestamp"], q=q)
+        if session_aware:
             session_times = df.groupby("session_id")["timestamp"].agg(["min", "max"])
             bad_sessions = session_times[
                 (session_times["min"] < timestamp_q)
@@ -187,8 +193,13 @@ class SessionAwareDataset(Dataset):
         test = test[test["item_id"].isin(train["item_id"])]
         test = test[test["uid"].isin(train["uid"])]
         if val_q is not None:
-            timestamp_val_q = np.quantile(test["timestamp"], q=val_q)
-            if remove_split_sessions:
+            if session_aware:
+                timestamp_val_q = np.quantile(
+                    test.groupby("session_id")["timestamp"].min(), q=val_q
+                )
+            else:
+                timestamp_val_q = np.quantile(test["timestamp"], q=val_q)
+            if session_aware:
                 test_session_times = test.groupby("session_id")["timestamp"].agg(
                     ["min", "max"]
                 )

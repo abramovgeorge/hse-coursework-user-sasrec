@@ -6,6 +6,8 @@ defaults:
   - dataloader: sasrec
   - transforms: sasrec
   - _self_
+dataloader:
+  batch_size: 128
 optimizer:
   _target_: torch.optim.Adam
   lr: 1e-3
@@ -13,14 +15,17 @@ lr_scheduler:
   _target_: torch.optim.lr_scheduler.ConstantLR
 loss_function:
   _target_: src.loss.SASRecSCELoss
-  n_buckets: 80
-  bucket_size_x: 80
-  bucket_size_y: 159
+  n_buckets: 874
+  bucket_size_x: 874
+  bucket_size_y: 546
   mix_x: True
+# datasets:
+#   train:
+#     inactivity_thresh: 1800
 trainer:
   log_step: 1000
-  n_epochs: 50
-  epoch_len: 5000
+  n_epochs: 20
+  epoch_len: null
   device_tensors: ["seq", "item"] # which tensors should be on device (ex. GPU)
   resume_from: null # null or path to the checkpoint dir with *.pth and config.yaml
   device: auto # device name or "auto"

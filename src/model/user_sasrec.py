@@ -70,15 +70,15 @@ class UserSASRec(nn.Module):
         self.user_emb = nn.Embedding(self._n_users, self._user_dim)
         self.emb_dropout = nn.Dropout(self._p)
 
-        if user_handling == "mult":
+        if self._user_handling == "mult" or self._user_handling == "mult_sq":
             self.user_linear = nn.Linear(self._user_dim, self._hidden_dim)
 
-        if user_handling == "tucker":
+        if self._user_handling == "tucker":
             self.core = nn.Parameter(
                 torch.rand(self._user_dim, self._hidden_dim, self._hidden_dim)
             )  # reinitialized in self._initialize
 
-        if user_handling == "gru":
+        if self._user_handling == "gru":
             self.hidden_to_gate = nn.Linear(self._hidden_dim, self._user_dim)
             self.user_to_gate = nn.Linear(self._user_dim, self._user_dim)
 
@@ -158,6 +158,11 @@ class UserSASRec(nn.Module):
             user_emb = self.emb_dropout(user_emb)
             user_emb = self.user_linear(user_emb)
             hidden_states *= user_emb
+        elif self._user_handling == "mult_sq":
+            user_emb = user_emb.unsqueeze(1).expand(-1, hidden_states.shape[1], -1)
+            user_emb = self.emb_dropout(user_emb)
+            user_emb = self.user_linear(user_emb)
+            hidden_states *= user_emb**2
         elif self._user_handling == "tucker":
             # for tucker, we use the user embeddings in forward
             pass
