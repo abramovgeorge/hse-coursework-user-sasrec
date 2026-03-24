@@ -2,7 +2,7 @@ defaults:
   - model: user_sasrec_yambda
   - writer: cometml
   - metrics: sasrec
-  - datasets: yambda
+  - datasets: yambda_test
   - dataloader: sasrec
   - transforms: sasrec
   - _self_
@@ -22,7 +22,7 @@ loss_function:
 #     inactivity_thresh: 1800
 trainer:
   log_step: 1000
-  n_epochs: 300
+  n_epochs: 22
   epoch_len: null
   device_tensors: ["seq", "item", "user"] # which tensors should be on device (ex. GPU)
   resume_from: null # null or path to the checkpoint dir with *.pth and config.yaml

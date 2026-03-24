@@ -1,13 +1,13 @@
 defaults:
-  - model: user_sasrec_gowalla
+  - model: user_sasrec_yelp_same
   - writer: cometml
   - metrics: sasrec
-  - datasets: gowalla_test
+  - datasets: yelp_test
   - dataloader: sasrec
   - transforms: sasrec
   - _self_
 dataloader:
-  batch_size: 128
+  batch_size: 64
 optimizer:
   _target_: torch.optim.Adam
   lr: 1e-3
@@ -15,13 +15,13 @@ lr_scheduler:
   _target_: torch.optim.lr_scheduler.ConstantLR
 loss_function:
   _target_: src.loss.SASRecSCELoss
-  n_buckets: 962
-  bucket_size_x: 962
-  bucket_size_y: 433
-  mix_x: True
+  n_buckets: 409
+  bucket_size_x: 409
+  bucket_size_y: 962
+  mix_x: False
 trainer:
-  log_step: 100
-  n_epochs: 24
+  log_step: 1000
+  n_epochs: 39
   epoch_len: null
   device_tensors: ["seq", "item", "user"] # which tensors should be on device (ex. GPU)
   resume_from: null # null or path to the checkpoint dir with *.pth and config.yaml
