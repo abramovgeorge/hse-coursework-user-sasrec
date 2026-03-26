@@ -191,6 +191,9 @@ class UserSASRec(nn.Module):
             output (dict): output dict containing logits for pos_items and neg_items.
         """
 
+        if self._user_handling == "tucker":
+            raise NotImplementedError("Tucker decomposition is not implemented for BCE")
+
         hidden_states = hidden_states[:, :-1, :]  # (B, L - 1, D)
 
         pos_embs = self.item_emb(pos_items)  # (B, L - 1, D)
@@ -214,6 +217,7 @@ class UserSASRec(nn.Module):
         bucket_size_x,
         bucket_size_y,
         mix_x,
+        user,
         **batch,
     ):
         """
@@ -230,14 +234,11 @@ class UserSASRec(nn.Module):
             bucket_size_x (int): bucket size for inputs
             bucket_size_y (int): bucket size for targets
             mix_x (bool): if True, mix hidden states with random matrix
+            user (torch.tensor): tensor containing users
+                for corresponding sequences. Shape: (B)
         Returns:
             loss (torch.tensor): SCE loss.
         """
-
-        if self._user_handling == "tucker":
-            raise NotImplementedError(
-                "Tucker decomposition is implemented only for full CE"
-            )
 
         seq = seq[:, :-1]
         hidden_states = hidden_states[:, :-1, :]
@@ -248,9 +249,22 @@ class UserSASRec(nn.Module):
         y = target.reshape(-1)
         w = self.item_emb.weight
 
-        correct_class_logits_ = (x * torch.index_select(w, dim=0, index=y)).sum(
-            dim=1
-        )  # (bs,)
+        if self._user_handling == "tucker":
+            flat_user = user.repeat_interleave(seq.shape[1])
+            user_emb = self.user_emb(flat_user)  # (n_b, hd_u)
+            user_emb = self.emb_dropout(user_emb)
+            correct_class_logits_ = contract(
+                "bi, bj, bk, ijk -> b",
+                user_emb,  # (n_b, d_u)
+                x,  # (n_b, hd)
+                torch.index_select(w, dim=0, index=y),  # (n_d, hd)
+                self.core,  # (d_u, hd, hd)
+                backend="torch",
+            )
+        else:
+            correct_class_logits_ = (x * torch.index_select(w, dim=0, index=y)).sum(
+                dim=1
+            )  # (bs,)
 
         with torch.no_grad():
             if mix_x:
@@ -291,7 +305,25 @@ class UserSASRec(nn.Module):
             n_buckets, bucket_size_y, hd
         )  # (n_b, bs_y, hd)
 
-        wrong_class_logits = x_bucket @ y_bucket.transpose(-1, -2)  # (n_b, bs_x, bs_y)
+        if self._user_handling == "tucker":
+            flat_user = user.repeat_interleave(seq.shape[1])
+            bucket_user = torch.gather(flat_user, 0, top_x_bucket.view(-1)).view(
+                n_buckets, bucket_size_x
+            )  # (n_b, bs_x)
+            user_emb = self.user_emb(bucket_user)  # (n_b, bs_x, hd_u)
+            user_emb = self.emb_dropout(user_emb)
+            wrong_class_logits = contract(
+                "bxi, bxj, byk, ijk -> bxy",
+                user_emb,  # (n_b, bs_x, hd_u)
+                x_bucket,  # (n_b, bs_x, hd)
+                y_bucket,  # (n_b, bs_y, hd)
+                self.core,  # (hd_u, hd, hd)
+                backend="torch",
+            )  # (n_b, bs_x, bs_y)
+        else:
+            wrong_class_logits = x_bucket @ y_bucket.transpose(
+                -1, -2
+            )  # (n_b, bs_x, bs_y)
         mask = (
             torch.index_select(y, dim=0, index=top_x_bucket.view(-1)).view(
                 n_buckets, bucket_size_x
@@ -364,7 +396,10 @@ class UserSASRec(nn.Module):
 
         if self._loss_type == "sce":
             output["loss_fn"] = partial(
-                self._forward_sce, hidden_states=hidden_states, seq=seq
+                self._forward_sce,
+                hidden_states=hidden_states,
+                seq=seq,
+                user=user,
             )
             return output
         elif self._loss_type == "bce":
