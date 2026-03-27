@@ -361,18 +361,32 @@ class UserSASRec(nn.Module):
 
         return loss
 
-    def _get_last_logits(self, hidden_states, seq, **batch):
+    def _get_last_logits(self, hidden_states, seq, user, **batch):
         """
         Get last logits for metric calculation. Filters seen items
         Args:
             hidden_states (torch.tensor): tensor containing precomputed
                 hidden_states. Shape: (B, L, D)
             seq (torch.tensor): tensor containing input sequences. Shape: (B, L)
+            user (torch.tensor): tensor containing users
+                for corresponding sequences. Shape: (B)
         Returns:
             last_logits (torch.tensor): last logit tensor of shape (B, N_items)
         """
         last_states = hidden_states[:, -1, :]  # (B, D)
-        last_logits = last_states @ self.item_emb.weight.T  # (B, N_items)
+        if self._user_handling == "tucker":
+            user_emb = self.user_emb(user)
+            user_emb = self.emb_dropout(user_emb)
+            last_logits = contract(
+                "bi, bj, nk, ijk -> bn",
+                user_emb,  # (B, D_u)
+                last_states,  # (B, D)
+                self.item_emb.weight,  # (N_items, D)
+                self.core,  # (D_u, D, D)
+                backend="torch",
+            )
+        else:
+            last_logits = last_states @ self.item_emb.weight.T  # (B, N_items)
         last_logits.scatter_(dim=1, index=seq, value=-1e9)
         return last_logits
 
