@@ -406,7 +406,9 @@ class UserSASRec(nn.Module):
 
         # we don't count top-n recommendation metrics on train, saves time and memory
         if not self.training:
-            output["last_logits"] = self._get_last_logits(hidden_states, seq, **batch)
+            output["last_logits"] = self._get_last_logits(
+                hidden_states, seq, user, **batch
+            )
 
         if self._loss_type == "sce":
             output["loss_fn"] = partial(
