@@ -27,6 +27,7 @@ class UserSASRec(nn.Module):
         user_handling,
         loss_class,
         user_dim=None,
+        tucker_chunk_size=None,
         **data_kwargs,
     ):
         """
@@ -43,6 +44,8 @@ class UserSASRec(nn.Module):
             loss_class (str): loss function class.
             user_dim (int | None): if not None, hidden dimension for the user embeddings,
                 different from `hidden_dim`. It is used in Tucker decomposition.
+            tucker_chunk_size (int | None): if not None, chunk size for tucker decomposition in
+                SCE. It is necessary for avoiding OOM.
         """
         super().__init__()
 
@@ -62,6 +65,7 @@ class UserSASRec(nn.Module):
         }
         self._loss_type = loss_class_map[loss_class]
         self._user_dim = hidden_dim if user_dim is None else user_dim
+        self._tucker_chunk_size = tucker_chunk_size
 
         self.item_emb = nn.Embedding(
             self._n_items + 1, self._hidden_dim, padding_idx=self._pad_token
@@ -312,14 +316,22 @@ class UserSASRec(nn.Module):
             )  # (n_b, bs_x)
             user_emb = self.user_emb(bucket_user)  # (n_b, bs_x, hd_u)
             user_emb = self.emb_dropout(user_emb)
-            wrong_class_logits = contract(
-                "bxi, bxj, byk, ijk -> bxy",
-                user_emb,  # (n_b, bs_x, hd_u)
-                x_bucket,  # (n_b, bs_x, hd)
-                y_bucket,  # (n_b, bs_y, hd)
-                self.core,  # (hd_u, hd, hd)
-                backend="torch",
-            )  # (n_b, bs_x, bs_y)
+            wrong_class_logits = torch.empty(
+                (n_buckets, bucket_size_x, bucket_size_y),
+                device=x.device,
+                dtype=x.dtype,
+            )
+            chunk_size = self._tucker_chunk_size
+            chunk_size = chunk_size if chunk_size else n_buckets
+            for i in range(0, n_buckets, chunk_size):
+                wrong_class_logits[i : i + chunk_size] = contract(
+                    "bxi, bxj, byk, ijk -> bxy",
+                    user_emb[i : i + chunk_size],  # (n_b, bs_x, hd_u)
+                    x_bucket[i : i + chunk_size],  # (n_b, bs_x, hd)
+                    y_bucket[i : i + chunk_size],  # (n_b, bs_y, hd)
+                    self.core,  # (hd_u, hd, hd)
+                    backend="torch",
+                )  # (n_b, bs_x, bs_y)
         else:
             wrong_class_logits = x_bucket @ y_bucket.transpose(
                 -1, -2
