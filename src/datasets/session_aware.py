@@ -175,7 +175,7 @@ class SessionAwareDataset(Dataset):
                 train, val and test subsets.
         """
         if session_aware:
-            timestamp_q = np.quantile(df.groupby("session_id")["timestamp"].min(), q=q)
+            timestamp_q = np.quantile(df.groupby("session_id")["timestamp"].mean(), q=q)
         else:
             timestamp_q = np.quantile(df["timestamp"], q=q)
         if session_aware:
@@ -195,7 +195,7 @@ class SessionAwareDataset(Dataset):
         if val_q is not None:
             if session_aware:
                 timestamp_val_q = np.quantile(
-                    test.groupby("session_id")["timestamp"].min(), q=val_q
+                    test.groupby("session_id")["timestamp"].mean(), q=val_q
                 )
             else:
                 timestamp_val_q = np.quantile(test["timestamp"], q=val_q)
