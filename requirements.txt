@@ -12,6 +12,7 @@ datasets==4.4.1
 opt_einsum
 optuna
 requests
+kagglehub
 
 black
 isort
