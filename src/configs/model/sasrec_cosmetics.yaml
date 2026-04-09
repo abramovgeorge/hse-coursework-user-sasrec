@@ -1,6 +1,6 @@
 _target_: src.model.SASRec
-hidden_dim: 32
+hidden_dim: 128
 num_blocks: 1
 max_len: ${datasets.train.max_len}
-num_heads: 2
-dropout_rate: 0.4890472797802143
+num_heads: 4
+dropout_rate: 0.28453656893959167

@@ -2,7 +2,7 @@ defaults:
   - model: sasrec_cosmetics
   - writer: cometml
   - metrics: sasrec
-  - datasets: cosmetics
+  - datasets: cosmetics_test
   - dataloader: sasrec
   - transforms: sasrec
   - _self_
@@ -13,10 +13,10 @@ lr_scheduler:
   _target_: torch.optim.lr_scheduler.ConstantLR
 loss_function:
   _target_: src.loss.SASRecSCELoss
-  n_buckets: 409
-  bucket_size_x: 409
-  bucket_size_y: 962
-  mix_x: False
+  n_buckets: 274
+  bucket_size_x: 274
+  bucket_size_y: 941
+  mix_x: True
 trainer:
   log_step: 1000
   n_epochs: 100
