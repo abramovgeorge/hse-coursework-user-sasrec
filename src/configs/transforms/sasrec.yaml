@@ -1,7 +1,3 @@
-defaults:
-  - batch_transforms: example
-  - _self_
-
 batch_transforms:
   train: null
   inference: null
