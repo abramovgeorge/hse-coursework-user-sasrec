@@ -12,8 +12,6 @@ train:
 test:
   _target_: src.datasets.CosmeticsDataset
   name: "test"
-  inter_type: ${..train.inter_type}
-  yambda_size: ${..train.yambda_size}
   min_inter_user: ${..train.min_inter_user}
   min_inter_item: ${..train.min_inter_item}
   min_len: ${..train.min_len}
