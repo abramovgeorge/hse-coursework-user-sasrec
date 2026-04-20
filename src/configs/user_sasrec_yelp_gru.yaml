@@ -1,0 +1,34 @@
+defaults:
+  - model: user_sasrec_yelp
+  - writer: cometml
+  - metrics: sasrec
+  - datasets: yelp
+  - dataloader: sasrec
+  - transforms: sasrec
+  - _self_
+model:
+  user_handling: "gru"
+optimizer:
+  _target_: torch.optim.Adam
+  lr: 1e-3
+lr_scheduler:
+  _target_: torch.optim.lr_scheduler.ConstantLR
+loss_function:
+  _target_: src.loss.SASRecSCELoss
+  n_buckets: 256
+  bucket_size_x: 256
+  bucket_size_y: 641
+  mix_x: True
+trainer:
+  log_step: 1000
+  n_epochs: 100
+  epoch_len: null
+  device_tensors: ["seq", "item", "user"] # which tensors should be on device (ex. GPU)
+  resume_from: null # null or path to the checkpoint dir with *.pth and config.yaml
+  device: auto # device name or "auto"
+  override: True # if True, will override the previous run with the same name
+  monitor: "max val_ndcg@10" # "off" or "max/min metric_name", i.e. our goal is to maximize/minimize metric
+  save_period: 10 # checkpoint each save_period epochs in addition to the best epoch
+  early_stop: 10 # epochs for early stopping
+  save_dir: "saved"
+  seed: 1
